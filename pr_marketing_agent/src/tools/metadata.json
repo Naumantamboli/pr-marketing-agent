@@ -1,0 +1,7 @@
+{
+    "name": "PrMarketingAgentTools",
+    "version": "0.1.0",
+    "description": "GitHub fetch, triage, analysis, content generation, claim verification, report rendering and scheduled-run cursor activities for PrMarketingAgent.",
+    "component": "activity",
+    "config": {}
+}

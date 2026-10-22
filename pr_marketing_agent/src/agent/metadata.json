@@ -1,0 +1,71 @@
+{
+    "name": "PrMarketingAgent",
+    "version": "0.1.0",
+    "description": "Explains GitHub pull requests in plain English for marketing, decides whether each change is post-worthy, and drafts posts, release notes, briefs, blogs, emails and weekly digests from your templates. Runs on demand for one PR or on a schedule over recently merged PRs. Every draft needs human approval.",
+    "component": "agent",
+    "config": {
+        "list_agent": true,
+        "triggers": [
+            {
+                "name": "mode",
+                "type": "dropdown",
+                "required": false,
+                "default": "on_demand",
+                "description": "on_demand, scheduled",
+                "friendly_name": "Mode"
+            },
+            {
+                "name": "pr_url",
+                "type": "str",
+                "required": false,
+                "description": "On-demand: the pull request URL, e.g. https://github.com/acme/web/pull/412.",
+                "friendly_name": "Pull request URL"
+            },
+            {
+                "name": "repos",
+                "type": "textarea",
+                "required": false,
+                "description": "Scheduled: repositories to scan, one owner/name per line.",
+                "friendly_name": "Repositories"
+            },
+            {
+                "name": "lookback_days",
+                "type": "int",
+                "required": false,
+                "default": 7,
+                "description": "Scheduled: days to look back on the first run (later runs continue from the last run).",
+                "friendly_name": "Lookback (days)"
+            },
+            {
+                "name": "formats",
+                "type": "str",
+                "required": false,
+                "description": "Comma-separated: linkedin_post, x_post, release_notes, marketing_brief, blog_draft, email_announcement. Empty on-demand = the agent's recommendation; empty scheduled = digest only.",
+                "friendly_name": "Content formats"
+            },
+            {
+                "name": "theme",
+                "type": "dropdown",
+                "required": false,
+                "default": "default",
+                "description": "default, product_launch, technical_audience",
+                "friendly_name": "Brand theme"
+            },
+            {
+                "name": "force_generate",
+                "type": "boolean",
+                "required": false,
+                "default": false,
+                "description": "Write drafts even when the change is judged internal or on hold.",
+                "friendly_name": "Generate anyway"
+            },
+            {
+                "name": "extra_context",
+                "type": "textarea",
+                "required": false,
+                "description": "Optional context for the writer, e.g. launch event or target audience. Treated as unverified.",
+                "friendly_name": "Extra context"
+            }
+        ]
+    }
+}
