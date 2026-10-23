@@ -42,11 +42,11 @@ Implement `extract_confluence_url()` to validate the expected field, approved ho
 - Handle missing pages, permission errors, rate limits and temporary failures.
 - Enforce content-size limits and use read-only permissions.
 
-Configure `CONFLUENCE_BASE_URL`, `CONFLUENCE_EMAIL` and `CONFLUENCE_API_TOKEN` securely.
+Configure `CONFLUENCE_BASE_URL`, `CONFLUENCE_EMAIL` and `CONFLUENCE_API_TOKEN` securely: read them with `os.getenv` after `load_dotenv()`, document them in `.env.template`, and never commit `.env`. If the platform's Atlassian connector covers Confluence, use `get_oauth_credentials` instead of an API token (see [SDK alignment](#5-sdk-alignment)).
 
 ### Phase 4 — Integrate the workflow
 
-Add orchestration to `marketing_workflow.py`:
+Add orchestration to the `@agent` in `src/agent/agents.py`; each step below is a `@tool` in `src/tools/main_activity.py` called through `toolExecutor.execute`:
 
 1. Fetch eligible PR metadata.
 2. Extract the Confluence link.
@@ -58,7 +58,7 @@ Keep GitHub retrieval, Confluence retrieval and marketing generation as separate
 
 ### Phase 5 — Reliability and safety
 
-- Retry transient failures with bounded backoff.
+- Retry transient failures with bounded backoff. The platform retries failed tools; set `retry_policy` and timeouts on each `@tool`, and honour `Retry-After` on 429s inside the clients.
 - Reject unauthorized URLs and avoid unrestricted URL fetching.
 - Prevent duplicate drafts on retries.
 - Log processing decisions and failures.
@@ -71,15 +71,33 @@ Test PR classification, metadata-only retrieval, link validation, Confluence acc
 
 ## 3. Final project structure
 
+Follows the Aetherion SDK [project structure](https://calfus.dev.aetherion.io/docs/project-structure). Workers auto-discover `@agent` and `@tool` functions under `src/`, and tools import helpers with `from utils import ...`.
+
 ```
-src/
-├── connectors/
-│   ├── github_client.py
-│   └── confluence_client.py
-├── workflows/
-│   └── marketing_workflow.py
-└── ...
+pr_marketing_v2_agent/
+├── pyproject.toml            # Python 3.12.10, pinned SDK wheel, dev group (pytest, ruff)
+├── uv.lock                   # committed
+├── .env.template             # TENANT_ID, AI gateway, GITHUB_TOKEN, CONFLUENCE_*
+├── .github/workflows/        # pytest on pull requests
+├── tests/
+│   └── conftest.py           # puts src/ on the path, stubs platform libraries
+└── src/
+    ├── agent/
+    │   ├── agents.py         # @agent: orchestration only, no I/O
+    │   └── metadata.json     # component "agent", triggers, config.activities
+    ├── tools/
+    │   ├── main_activity.py  # @tool: GitHub, Confluence, LLM and storage calls
+    │   └── metadata.json     # component "activity"
+    └── utils/                # plain helpers, no decorators
+        ├── github_client.py
+        ├── confluence_client.py
+        ├── llm.py            # AiGatewayClient wrapper
+        ├── prompts.py
+        ├── schemas.py
+        └── storage.py        # run marker and drafts in the TENANT_ID bucket
 ```
+
+`src/agent/workflow.py` and `src/tools/activities.py` are renamed to `agents.py` and `main_activity.py` to match the SDK convention.
 
 ## 4. Definition of done
 
@@ -90,5 +108,31 @@ src/
 - Missing documentation and API failures are handled safely.
 - Drafts are grounded in the supplied context, auditable and routed through the existing approval process.
 - Pagination, processing limits and run-marker updates do not silently lose eligible PRs.
+
+## 5. SDK alignment
+
+How each part of the plan maps onto the [Aetherion SDK](https://calfus.dev.aetherion.io/docs):
+
+| Concern | SDK approach |
+|---------|--------------|
+| Orchestration | One `@agent` in `src/agent/agents.py`. It must be deterministic: no network, storage or LLM calls, and `agent_handle.now()` instead of `datetime.now()`. |
+| I/O | Every GitHub, Confluence, LLM and storage call is a `@tool` in `src/tools/main_activity.py`, called with explicit `start_to_close_timeout` / `schedule_to_close_timeout`. |
+| Clients | `github_client.py` and `confluence_client.py` stay undecorated helpers in `src/utils/`. |
+| Scheduling | No cron in code. A schedule is set on the published agent in the platform, and it runs the agent with `mode: scheduled` in the payload. |
+| Run inputs | Triggers in `src/agent/metadata.json` (mode, PR URL, repos, lookback, formats, theme). |
+| Run marker | JSON per repo in object storage (bucket = `TENANT_ID`) via `common_lib` `StorageService`, written by a tool only after the run succeeds. |
+| Retries | Durable execution retries failed tools automatically; tune with `retry_policy` per tool. |
+| Duplicate drafts | Deterministic storage keys per PR and format (e.g. `pr_marketing/drafts/<repo>/<number>/<format>.md`); a tool checks for an existing draft before generating. |
+| LLM | `agent_lib.gateway.ai.AiGatewayClient`; no provider keys in the agent. List LLM tools under `config.activities` with descriptions so model routing can rate them. |
+| Confluence auth | Preferred: platform Connectors (`get_oauth_credentials`) if the Atlassian connection grants Confluence read scopes; calls then go to `api.atlassian.com/ex/confluence/<cloudId>/...`. Fallback: `CONFLUENCE_EMAIL` + `CONFLUENCE_API_TOKEN` from the environment. |
+| Approval | Drafts are returned with status `awaiting_human_approval`, as in v1. `humanInput.request_approval` can pause the run for an in-platform Approve / Reject if wanted. |
+| Output | Report returned as a structured `s3_download_link` result. |
+| Tests | pytest with `asyncio_mode = "auto"`; mock `toolExecutor.execute` for the agent and network clients for tools; CI on pull requests. |
+
+### Open questions
+
+- Does the tenant's Atlassian connection grant Confluence read scopes, or do we need a Confluence API token?
+- Which hostname(s) are approved for `Feature documentation:` links?
+- Keep the v1 approval flow (status on the result), or pause runs with `humanInput.request_approval`?
 
 **Final design:** GitHub tells the agent what changed. Confluence explains what the feature means to users. The LLM turns that context into a marketing draft.
