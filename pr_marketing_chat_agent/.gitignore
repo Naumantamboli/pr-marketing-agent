@@ -1,0 +1,8 @@
+.env
+.dockerignore
+__pycache__/
+*.pyc
+uv.lock
+.venv/
+.DS_Store
+output/

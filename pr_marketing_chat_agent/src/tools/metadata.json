@@ -1,0 +1,7 @@
+{
+    "name": "PrMarketingChatAgentTools",
+    "version": "0.1.0",
+    "description": "Conversation memory, chat model step, docs (GitHub) and Jira lookups, fact-checked drafting, and Calfus-branded social image / blog document rendering for PrMarketingChatAgent.",
+    "component": "activity",
+    "config": {}
+}

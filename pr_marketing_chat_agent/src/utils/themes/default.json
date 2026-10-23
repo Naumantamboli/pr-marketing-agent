@@ -1,0 +1,8 @@
+{
+  "voice": "Clear, friendly and confident. Short sentences. Explain the benefit before the feature.",
+  "audience": "Business users and team leads who use the product day to day.",
+  "banned_words": ["revolutionary", "game-changer", "cutting-edge", "seamless", "leverage", "synergy"],
+  "emoji_policy": "none",
+  "cta_default": "Try it today in your workspace.",
+  "hashtags": ["#ProductUpdate"]
+}

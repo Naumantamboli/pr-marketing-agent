@@ -1,0 +1,47 @@
+{
+  "headline_light": {
+    "slide": 1,
+    "description": "Light background, mint glow, big mint accent word over a one-line headline and a short bold statement. Good for a single launch or idea.",
+    "slots": {
+      "accent": {"shape": 32, "run": 0, "box": [81, 405, 891, 175], "font": "StackSansNotch-Bold.ttf", "size_pt": 129.67, "color": "3ECFA0", "max_chars": 16, "max_lines": 1},
+      "headline": {"shape": 32, "run": 2, "box": [81, 558, 891, 115], "font": "StackSansNotch-Light.ttf", "size_pt": 81.53, "color": "000000", "max_chars": 28, "max_lines": 1},
+      "body": {"shape": 31, "box": [81, 736, 794, 200], "font": "DMSans-SemiBold.ttf", "size_pt": 31.99, "color": "000000", "max_chars": 130, "max_lines": 4}
+    },
+    "static": [
+      {"text": "RUN WITH CALFUS", "box": [137, 1020, 392, 77], "font": "DMSans-SemiBold.ttf", "size_pt": 27.99, "color": "000000", "align": "center", "valign": "middle", "tracking": 2}
+    ]
+  },
+  "headline_dark": {
+    "slide": 4,
+    "description": "Dark background with a green glow and network mesh: small eyebrow label, large white headline, grey supporting line. Good for tech or platform stories.",
+    "slots": {
+      "eyebrow": {"shape": 10, "box": [106, 277, 180, 49], "font": "DMSans-Regular.ttf", "size_pt": 15.99, "color": "FFFFFF", "max_chars": 18, "max_lines": 1, "align": "center", "valign": "middle", "upper": true},
+      "headline": {"shape": 19, "box": [81, 372, 935, 280], "font": "StackSansNotch-Regular.ttf", "size_pt": 102.64, "color": "FFFFFF", "max_chars": 36, "max_lines": 2},
+      "body": {"shape": 22, "box": [81, 716, 912, 130], "font": "DMSans-SemiBold.ttf", "size_pt": 24.0, "color": "C7C7C7", "max_chars": 160, "max_lines": 3}
+    },
+    "static": [
+      {"text": "RUN WITH CALFUS", "box": [138, 1157, 392, 77], "font": "DMSans-SemiBold.ttf", "size_pt": 27.99, "color": "FFFFFF", "align": "center", "valign": "middle", "tracking": 2}
+    ]
+  },
+  "three_steps": {
+    "slide": 6,
+    "description": "Light textured background: mint accent word and headline, then three numbered cards (short title + one line each). Good for how-it-works or three benefits.",
+    "slots": {
+      "accent": {"shape": 48, "run": 0, "box": [81, 357, 891, 175], "font": "StackSansNotch-Bold.ttf", "size_pt": 129.67, "color": "3ECFA0", "max_chars": 16, "max_lines": 1},
+      "headline": {"shape": 48, "run": 2, "box": [81, 512, 891, 115], "font": "StackSansNotch-Light.ttf", "size_pt": 81.53, "color": "000000", "max_chars": 28, "max_lines": 1},
+      "step1_title": {"shape": 35, "box": [97, 773, 210, 24], "font": "StackSansNotch-Regular.ttf", "size_pt": 16.19, "color": "000000", "max_chars": 16, "max_lines": 1, "upper": true},
+      "step1_text": {"shape": 38, "box": [97, 824, 211, 64], "font": "DMSans-SemiBold.ttf", "size_pt": 9.86, "color": "000000", "max_chars": 80, "max_lines": 4},
+      "step2_title": {"shape": 36, "box": [423, 838, 210, 24], "font": "StackSansNotch-Regular.ttf", "size_pt": 16.19, "color": "000000", "max_chars": 16, "max_lines": 1, "upper": true},
+      "step2_text": {"shape": 39, "box": [423, 889, 211, 64], "font": "DMSans-SemiBold.ttf", "size_pt": 9.86, "color": "000000", "max_chars": 80, "max_lines": 4},
+      "step3_title": {"shape": 37, "box": [755, 913, 210, 24], "font": "StackSansNotch-Regular.ttf", "size_pt": 16.19, "color": "000000", "max_chars": 16, "max_lines": 1, "upper": true},
+      "step3_text": {"shape": 40, "box": [755, 967, 211, 64], "font": "DMSans-SemiBold.ttf", "size_pt": 9.86, "color": "000000", "max_chars": 80, "max_lines": 4}
+    },
+    "static": [
+      {"text": "AGENTIC AI FOR YOUR ENTERPRISE", "box": [80, 146, 302, 31], "font": "DMSans-Bold.ttf", "size_pt": 7.18, "color": "4F9084", "align": "left", "valign": "top", "tracking": 3},
+      {"text": "01", "box": [90, 719, 59, 36], "font": "DMSans-Black.ttf", "size_pt": 27.35, "color": "FFFFFF", "align": "center", "valign": "middle"},
+      {"text": "02", "box": [418, 788, 65, 36], "font": "DMSans-Black.ttf", "size_pt": 27.35, "color": "FFFFFF", "align": "center", "valign": "middle"},
+      {"text": "03", "box": [748, 864, 67, 36], "font": "DMSans-Black.ttf", "size_pt": 27.35, "color": "FFFFFF", "align": "center", "valign": "middle"},
+      {"text": "RUN WITH CALFUS", "box": [141, 1163, 392, 77], "font": "DMSans-SemiBold.ttf", "size_pt": 27.99, "color": "FFFFFF", "align": "center", "valign": "middle", "tracking": 2}
+    ]
+  }
+}
