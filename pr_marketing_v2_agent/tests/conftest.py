@@ -1,3 +1,4 @@
+import importlib.util
 import logging
 import sys
 import types
@@ -8,10 +9,17 @@ SRC_PATH = str(Path(__file__).parent.parent / "src")
 if SRC_PATH not in sys.path:
     sys.path.insert(0, SRC_PATH)
 
-# Stub platform-only libraries the code imports at module load.
-if "common_lib" not in sys.modules:
-    logger_mod = types.ModuleType("common_lib.utils.logger")
-    logger_mod.setup_logger = logging.getLogger
-    sys.modules["common_lib"] = types.ModuleType("common_lib")
-    sys.modules["common_lib.utils"] = types.ModuleType("common_lib.utils")
-    sys.modules["common_lib.utils.logger"] = logger_mod
+
+def _stub(name: str, **attrs) -> None:
+    parts = name.split(".")
+    for i in range(1, len(parts) + 1):
+        sys.modules.setdefault(".".join(parts[:i]), types.ModuleType(".".join(parts[:i])))
+    for key, value in attrs.items():
+        setattr(sys.modules[name], key, value)
+
+
+# Stub platform-only libraries when they aren't installed, so tests run anywhere.
+if importlib.util.find_spec("common_lib") is None:
+    _stub("common_lib.utils.logger", setup_logger=logging.getLogger)
+if importlib.util.find_spec("aetherion_sdk") is None:
+    _stub("aetherion_sdk", tool=lambda **_: lambda fn: fn)

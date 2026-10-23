@@ -184,9 +184,12 @@ class GitHubClient:
     async def list_merged_prs(
         self, repo_full: str, since: datetime, limit: int
     ) -> list[dict[str, Any]]:
-        """PRs merged into the default branch after `since`, oldest first.
+        """PRs merged into the default branch at or after `since`, oldest first.
 
-        Each carries `type_check`, so fix/chore PRs can be dropped before `fetch_pr`.
+        Inclusive, so PRs sharing the run marker's timestamp are seen again and the caller
+        drops the ones it already processed. Truncating to `limit` keeps the oldest, so
+        nothing newer is skipped. Each carries `type_check`, so fix/chore PRs can be dropped
+        before `fetch_pr`.
         """
         meta = await self._get(f"/repos/{repo_full}")
         default_branch = meta["default_branch"]
@@ -204,11 +207,12 @@ class GitHubClient:
             )
             for pr in batch:
                 merged_at = pr.get("merged_at")
-                if merged_at and _iso(merged_at) > since:
+                if merged_at and _iso(merged_at) >= since:
                     labels = [lb["name"] for lb in pr.get("labels", [])]
                     found.append(
                         {
                             "url": pr["html_url"],
+                            "number": pr["number"],
                             "merged_at": merged_at,
                             "title": pr["title"],
                             "head_branch": pr["head"]["ref"],
@@ -218,11 +222,12 @@ class GitHubClient:
                             ),
                         }
                     )
-            # Sorted by updated desc: once a page is entirely older than `since`, stop.
-            if len(batch) < 100 or all(_iso(p["updated_at"]) <= since for p in batch):
+            # Sorted by updated desc, and updated_at >= merged_at: once a page is entirely
+            # older than `since`, no later page can hold a PR merged at or after it.
+            if len(batch) < 100 or all(_iso(p["updated_at"]) < since for p in batch):
                 break
             page += 1
-        found.sort(key=lambda p: p["merged_at"])
+        found.sort(key=lambda p: (_iso(p["merged_at"]), p["number"]))
         return found[:limit]
 
 
