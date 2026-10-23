@@ -11,6 +11,8 @@ from typing import Any
 import httpx
 from common_lib.utils.logger import setup_logger
 
+from utils.confluence_url import extract_confluence_url
+
 logger = setup_logger(__name__)
 
 _PR_URL_RE = re.compile(r"https?://[^/]+/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>\d+)")
@@ -22,16 +24,6 @@ _TITLE_TYPE_RE = re.compile(
     re.IGNORECASE,
 )
 _BRANCH_TYPE_RE = re.compile(r"^(?P<type>[a-z]+)/", re.IGNORECASE)
-
-# Any http(s) URL, stopping at whitespace and Markdown/HTML delimiters.
-_URL_RE = re.compile(r"https?://[^\s<>()\[\]\"'`]+")
-# Cloud: <site>.atlassian.net/wiki/...; Server/DC: a "confluence" host, or CONFLUENCE_BASE_URL.
-_CONFLUENCE_PATH_RE = re.compile(
-    r"^https?://[^/]+\.atlassian\.net/wiki/"
-    r"|^https?://[^/]*confluence[^/]*/(?:display/|pages/|spaces/|x/|wiki/)",
-    re.IGNORECASE,
-)
-_CONFLUENCE_BASE_URL = os.getenv("CONFLUENCE_BASE_URL", "").rstrip("/").lower()
 _TYPE_ALIASES = {"feature": "feat", "performance": "perf", "bugfix": "fix", "hotfix": "fix"}
 
 # Marketable change types; everything in _EXCLUDE_TYPES is dropped before any LLM call.
@@ -115,24 +107,6 @@ def redact(text: str) -> str:
     return text
 
 
-def _is_confluence_url(url: str) -> bool:
-    if _CONFLUENCE_BASE_URL and url.lower().startswith(_CONFLUENCE_BASE_URL + "/"):
-        return True
-    return bool(_CONFLUENCE_PATH_RE.match(url))
-
-
-def extract_confluence_links(*texts: str) -> list[str]:
-    """Confluence page URLs found in the given texts, deduplicated in first-seen order."""
-    found: dict[str, None] = {}
-    for text in texts:
-        for m in _URL_RE.finditer(text or ""):
-            # Sentence punctuation is not part of the link: "see https://.../Spec."
-            url = m.group(0).rstrip(".,;:!?*_")
-            if _is_confluence_url(url):
-                found.setdefault(url, None)
-    return list(found)
-
-
 class GitHubClient:
     def __init__(self, token: str | None = None, api_url: str | None = None):
         token = token or os.getenv("GITHUB_TOKEN")
@@ -203,10 +177,8 @@ class GitHubClient:
             "additions": pr.get("additions", 0),
             "deletions": pr.get("deletions", 0),
             "commits": [redact(c["commit"]["message"].split("\n", 1)[0]) for c in commits],
-            # Scanned before truncation, and over full commit messages, not just subjects.
-            "confluence_links": extract_confluence_links(
-                body, *(c["commit"]["message"] for c in commits)
-            ),
+            # Read from the full body, before truncation; status != "ok" flags the PR.
+            "feature_doc": extract_confluence_url(body),
         }
 
     async def list_merged_prs(
