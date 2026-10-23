@@ -1,0 +1,8 @@
+{
+  "voice": "Confident, plain-spoken and outcome-first, like the Calfus social templates (\"Innovation has no Finish Line\"). Short sentences. Say what customers can now do before how it works.",
+  "audience": "Business and technology leaders at enterprises adopting agentic AI.",
+  "banned_words": ["revolutionary", "game-changer", "cutting-edge", "seamless", "leverage", "synergy", "next-gen", "disrupt"],
+  "emoji_policy": "none",
+  "cta_default": "Run with Calfus.",
+  "hashtags": ["#RunWithCalfus", "#AgenticAI"]
+}

@@ -1,0 +1,8 @@
+{
+  "voice": "Precise and matter-of-fact. Name capabilities exactly; skip fluff. Light technical terms allowed (API, webhook, SSO) but no code.",
+  "audience": "Developers, admins and technical buyers.",
+  "banned_words": ["magic", "revolutionary", "seamless"],
+  "emoji_policy": "none",
+  "cta_default": "Read the docs to get started.",
+  "hashtags": ["#DevTools"]
+}

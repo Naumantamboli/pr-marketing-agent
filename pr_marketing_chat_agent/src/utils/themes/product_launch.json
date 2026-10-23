@@ -1,0 +1,8 @@
+{
+  "voice": "Energetic and celebratory, still specific. Lead with the moment of value.",
+  "audience": "Prospects and existing customers following our launches.",
+  "banned_words": ["revolutionary", "game-changer", "world-class"],
+  "emoji_policy": "at most one, at the start of the post",
+  "cta_default": "See what's new.",
+  "hashtags": ["#Launch", "#ProductUpdate"]
+}
