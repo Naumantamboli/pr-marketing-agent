@@ -136,3 +136,64 @@ How each part of the plan maps onto the [Aetherion SDK](https://calfus.dev.aethe
 - Keep the v1 approval flow (status on the result), or pause runs with `humanInput.request_approval`?
 
 **Final design:** GitHub tells the agent what changed. Confluence explains what the feature means to users. The LLM turns that context into a marketing draft.
+
+---
+
+# Product catalog updater (`ProductCatalogUpdater`)
+
+Keeps the product catalog in SDK storage current from merged PRs, their Jira issues and docs
+changes. The LLM proposes; code decides. Nothing reaches the catalog without a verbatim quote
+behind it.
+
+## Catalog layout (`pr_marketing_v2/knowledge/`)
+
+| Key | Holds |
+|-----|-------|
+| `catalog.json` | Index: product overview, architecture summary + component map, one entry per feature |
+| `architecture.json` | Architecture summary, components (role, depends_on), architecture updates |
+| `features/<slug>.json` | One feature: summary, status, aliases, overview fields, sources, updates, `field_meta` |
+| `history/...` | Every record as it was before each revision (rollback: `catalog.restore_feature`) |
+| `events/<id>.json` | Evidence bundles (PR + Jira text, docs diffs) |
+| `proposals/pending.json` | Changes waiting for review |
+| `runs/<run_id>.json` / `.md` | Audit of every proposal and decision; the run report |
+
+Load the reviewed baseline once: `uv run --no-sync python scripts/load_catalog_seed.py`.
+
+## One run
+
+1. **Collect**: merged PRs since the run marker (fix/chore/... skipped), plus Jira issues named
+   in the title, branch or description; changed pages of the docs site (`llms-full.txt` snapshot diff).
+2. **Per event**:
+   - route: which features and components
+   - extract: atomic claims, each with a verbatim quote, checked in code
+   - verify: a second model sees only the claim and its quote
+   - compose: typed operations built only from verified claims
+   - check: a blind check that the text doesn't go beyond the claims, plus validation, status rules and tiers
+3. **Live mode**:
+   - Tier A (append an update line) is applied automatically.
+   - Markers, the docs snapshot and the retry list advance.
+   - One review form asks about tier B (rewrites) and tier C (new feature, deprecation), with before/after and quotes.
+   - Approved items are applied. Unanswered items stay pending and expire after 3 asks.
+4. **Report**: a markdown download link, plus the audit in `runs/`.
+
+**Shadow mode** (the default) does everything except write to the catalog, the review queue or
+the markers, so its proposals can be judged first.
+
+**Status rules:**
+- A PR never changes an existing feature's status.
+- A feature first seen in a PR starts `in_progress`.
+- Only docs changes can mark a feature `shipped` or `deprecated`.
+
+## Run options (`metadata.json` triggers)
+
+`repos` (comma-separated `org/repo`), `lookback_days` (first run only), `mode` (`shadow` | `live`),
+`include_docs`, `reviewers` (`slack:a@x.com, teams:b@x.com`), `review_hours`.
+
+Env: see `.env.template` (GitHub, Jira, docs site URL, models per step).
+
+## Before going live
+
+1. Replace the illustrative cases in `tests/golden/cases.json` with ~25 real past PRs and docs
+   changes, each with expected operations.
+2. Run `uv run --no-sync python scripts/eval_golden.py`, then run in shadow mode for two weeks.
+3. Switch to `mode: live` once precision is at least 0.95 with no false writes.

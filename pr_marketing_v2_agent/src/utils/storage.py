@@ -50,6 +50,16 @@ def get(key: str) -> bytes | None:
         raise
 
 
+def get_json(key: str) -> Any | None:
+    raw = get(key)
+    return json.loads(raw) if raw else None
+
+
+def put_json(key: str, value: Any) -> str:
+    data = json.dumps(value, ensure_ascii=False, indent=2).encode()
+    return put(key, data, "application/json")
+
+
 def _marker_key(repo_full: str) -> str:
     return f"{PREFIX}/state/{repo_full.replace('/', '__')}.json"
 

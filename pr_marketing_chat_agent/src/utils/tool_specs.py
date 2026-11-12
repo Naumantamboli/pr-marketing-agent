@@ -22,6 +22,28 @@ def tool_specs() -> list[dict[str, Any]]:
     days = {"type": "integer", "minimum": 1, "maximum": 180, "description": "Look back N days"}
     return [
         _fn(
+            "product_catalog",
+            "START HERE for any product question. The reviewed product catalog: what Aetherion "
+            "is, how it is built (architecture and components), and every feature with its "
+            "stage, one-line summary and aliases.",
+            {},
+            [],
+        ),
+        _fn(
+            "catalog_feature",
+            "One feature's full catalog record: what it is, who it's for, how it works, "
+            "limitations, recent dated updates, components, and the sources behind them.",
+            {"feature": {"type": "string", "description": "Feature slug, name or alias"}},
+            ["feature"],
+        ),
+        _fn(
+            "catalog_changes",
+            "Dated product changes recorded in the catalog across all features and the "
+            "architecture, newest first. Use for 'what's new / what changed lately'.",
+            {"days": {"type": "integer", "minimum": 1, "maximum": 365, "default": 30}},
+            [],
+        ),
+        _fn(
             "list_docs",
             "List every page of the product docs (path, title, description). Use it to find "
             "which pages to read.",
@@ -36,8 +58,8 @@ def tool_specs() -> list[dict[str, Any]]:
         ),
         _fn(
             "whats_new_in_docs",
-            "Recent changes to the product docs: commit messages and the pages they touched. "
-            "Start here for 'what's new / what shipped lately'.",
+            "Recent changes to the product docs repo: commit messages and the pages they "
+            "touched. Use when catalog_changes doesn't cover what you need.",
             {"days": {**days, "default": 14}},
             [],
         ),
@@ -71,7 +93,8 @@ def tool_specs() -> list[dict[str, Any]]:
                 "source_refs": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Docs page paths and/or Jira keys the draft is based on. "
+                    "description": "What the draft is based on: catalog:<feature-slug>, docs page "
+                    "paths and/or Jira keys. "
                     "Optional when revising (the base draft's sources are reused).",
                 },
                 "audience": {"type": "string"},

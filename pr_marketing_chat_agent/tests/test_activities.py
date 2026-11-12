@@ -27,7 +27,7 @@ def fake_llm(monkeypatch):
 def fake_sources(monkeypatch):
     seen: list[list[str]] = []
 
-    async def fetch(refs):
+    async def fetch(refs, customer_id=None):
         seen.append(refs)
         return SOURCES, []
 
@@ -139,6 +139,6 @@ async def test_decide_builds_system_prompt_and_tools(monkeypatch):
     monkeypatch.setattr(activities, "decide", decide)
     drafts = {"d1": {"id": "d1", "format": "x_post", "title": "Hello", "content": "Draft text"}}
     await activities.chat_decide_tool({"messages": [], "drafts": drafts})
-    assert 'd1: x_post "Hello"' in seen["system"] and len(seen["tools"]) == 8
+    assert 'd1: x_post "Hello"' in seen["system"] and len(seen["tools"]) == 11
     await activities.chat_decide_tool({"messages": [], "allow_tools": False})
     assert seen["tools"] is None

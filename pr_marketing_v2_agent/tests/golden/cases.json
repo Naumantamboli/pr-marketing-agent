@@ -1,0 +1,75 @@
+{
+  "_about": "Golden cases for scripts/eval_golden.py. These three are ILLUSTRATIONS of the format; replace them with ~25 real past PRs and docs changes, each with hand-written expectations. 'expect.ops' lists the (op, target[, field]) a careful human would make; 'forbidden' lists phrases no proposal may contain (things the evidence does not say).",
+  "cases": [
+    {
+      "name": "canvas-export-two-loops",
+      "event": {
+        "event_id": "pr:example/app#101",
+        "kind": "pr_merged",
+        "occurred_at": "2026-11-01",
+        "title": "feat(canvas): export canvases with up to two loops",
+        "url": "https://github.com/example/app/pull/101",
+        "refs": {"jira": []},
+        "evidence": [
+          {
+            "id": "e1",
+            "source": "pr",
+            "url": "https://github.com/example/app/pull/101",
+            "text": "Title: feat(canvas): export canvases with up to two loops\n\nDescription:\nExport to an SDK project previously stopped on a second loop. Export now supports up to two loops per canvas, as long as they are not nested. Nested loops are still refused with the existing 'More than one loop' finding renamed to 'Nested loops'."
+          }
+        ]
+      },
+      "expect": {
+        "product_change": true,
+        "ops": [["add_update", "canvas"]],
+        "optional_ops": [["edit_field", "canvas", "overview.limitations"]],
+        "forbidden": ["three loops", "any number of loops", "Reason & act now exports"]
+      }
+    },
+    {
+      "name": "internal-refactor",
+      "event": {
+        "event_id": "pr:example/app#102",
+        "kind": "pr_merged",
+        "occurred_at": "2026-11-02",
+        "title": "refactor: split run-history repository into two modules",
+        "url": "https://github.com/example/app/pull/102",
+        "refs": {"jira": []},
+        "evidence": [
+          {
+            "id": "e1",
+            "source": "pr",
+            "url": "https://github.com/example/app/pull/102",
+            "text": "Title: refactor: split run-history repository into two modules\n\nDescription:\nPure refactor, no behaviour change. Moves query helpers into run_history/queries.py and adds unit tests."
+          }
+        ]
+      },
+      "expect": {"product_change": false, "ops": [], "forbidden": []}
+    },
+    {
+      "name": "docs-evals-schedule",
+      "event": {
+        "event_id": "docs:evals@0000000001",
+        "kind": "docs_changed",
+        "occurred_at": "2026-11-03",
+        "title": "Docs: Evaluations (changed)",
+        "url": "https://calfus.dev.aetherion.io/docs/evals",
+        "refs": {"docs_page": "https://calfus.dev.aetherion.io/docs/evals", "page_status": "changed"},
+        "evidence": [
+          {
+            "id": "e1",
+            "source": "docs:evals",
+            "url": "https://calfus.dev.aetherion.io/docs/evals",
+            "text": "Added or changed on the 'Evaluations' docs page:\n\nEvals can run on a schedule. Open the Evals tab, choose Schedule, and pick daily or weekly; each scheduled run keeps its verdict in the run list."
+          }
+        ]
+      },
+      "expect": {
+        "product_change": true,
+        "ops": [["add_update", "evaluations"]],
+        "optional_ops": [["edit_field", "evaluations", "overview.how_it_works"]],
+        "forbidden": ["hourly", "email", "Slack"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "ProductCatalogUpdater Activities",
+  "version": "0.1.0",
+  "description": "Tools for the ProductCatalogUpdater: collect PR and docs events, extract and verify claims, propose, review and apply catalog changes.",
+  "component": "activity",
+  "config": {}
+}

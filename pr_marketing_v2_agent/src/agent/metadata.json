@@ -1,0 +1,86 @@
+{
+  "name": "ProductCatalogUpdater",
+  "version": "0.1.0",
+  "description": "Keeps the Aetherion product catalog (overview, architecture, one record per feature) up to date from merged PRs, their Jira issues and docs changes. Every change is backed by quoted evidence; rewrites wait for human review.",
+  "component": "agent",
+  "config": {
+    "list_agent": true,
+    "triggers": [
+      {
+        "name": "repos",
+        "type": "text",
+        "required": false,
+        "friendly_name": "Repositories",
+        "description": "GitHub repos to read merged PRs from, comma-separated (org/repo). Leave empty to check docs only."
+      },
+      {
+        "name": "lookback_days",
+        "type": "number",
+        "required": false,
+        "friendly_name": "Look back (days)",
+        "description": "First run only: how far back to read merged PRs. Later runs continue from where the last one stopped."
+      },
+      {
+        "name": "mode",
+        "type": "dropdown",
+        "required": true,
+        "friendly_name": "Mode",
+        "description": "Shadow (propose and report only):shadow,Live (write to the catalog):live"
+      },
+      {
+        "name": "include_docs",
+        "type": "boolean",
+        "required": false,
+        "friendly_name": "Check the docs site for changes"
+      },
+      {
+        "name": "reviewers",
+        "type": "text",
+        "required": false,
+        "friendly_name": "Reviewers to notify",
+        "description": "Who to ask about changes that need review, e.g. slack:owner@company.com, teams:lead@company.com. Plain emails go to Slack."
+      },
+      {
+        "name": "review_hours",
+        "type": "number",
+        "required": false,
+        "friendly_name": "Review window (hours)",
+        "description": "How long to wait for a review before leaving the changes pending for the next run (default 24)."
+      }
+    ],
+    "activities": [
+      {
+        "name": "route_event_tool",
+        "friendly_name": "Find affected features",
+        "category": "Classification",
+        "description": "Reads a change event and the catalog index, and names the features and components it touches."
+      },
+      {
+        "name": "extract_claims_tool",
+        "friendly_name": "Extract quoted claims",
+        "category": "Extraction",
+        "description": "Extracts atomic product facts from PR, Jira and docs text, each with a verbatim quote."
+      },
+      {
+        "name": "verify_claims_tool",
+        "friendly_name": "Verify claims",
+        "category": "Review",
+        "description": "Checks each claim strictly against its quote and rejects anything the quote doesn't state.",
+        "quality_step": 1
+      },
+      {
+        "name": "compose_ops_tool",
+        "friendly_name": "Draft catalog changes",
+        "category": "Writing",
+        "description": "Turns verified claims into catalog update lines and field edits."
+      },
+      {
+        "name": "check_ops_tool",
+        "friendly_name": "Check drafted changes",
+        "category": "Review",
+        "description": "Checks that each drafted change says nothing beyond its claims, narrowing it if needed.",
+        "quality_step": 1
+      }
+    ]
+  }
+}

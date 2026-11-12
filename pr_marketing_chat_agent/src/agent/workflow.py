@@ -33,6 +33,9 @@ HISTORY_REPLY_CHARS = 4000
 
 # Model-facing tool name -> (activity, timeouts). Nothing outside this map can run.
 TOOL_ACTIVITIES: dict[str, tuple[str, dict[str, Any]]] = {
+    "product_catalog": ("catalog_overview_tool", _FAST),
+    "catalog_feature": ("catalog_feature_tool", _FAST),
+    "catalog_changes": ("catalog_changes_tool", _FAST),
     "list_docs": ("docs_index_tool", _FAST),
     "read_doc": ("docs_read_tool", _FAST),
     "whats_new_in_docs": ("docs_changes_tool", _FAST),
@@ -42,6 +45,8 @@ TOOL_ACTIVITIES: dict[str, tuple[str, dict[str, Any]]] = {
     "make_social_visual": ("render_social_tool", _LLM),
     "make_blog_document": ("render_blog_tool", _FAST),
 }
+
+CATALOG_TOOLS = ("product_catalog", "catalog_feature", "catalog_changes")
 
 ERROR_REPLY = (
     "Sorry, something went wrong on my side and I couldn't finish that. "
@@ -145,6 +150,8 @@ class Turn:
         if "_invalid_arguments" in args:
             raise ValueError("The tool arguments were not valid JSON; call the tool again.")
         payload = dict(args)
+        if name in CATALOG_TOOLS or name == "write_draft":
+            payload["customer_id"] = self.ctx["customer_id"]
         if name == "write_draft" and args.get("base_draft_id"):
             payload["base_draft"] = self._draft(args["base_draft_id"])
         if name in ("make_social_visual", "make_blog_document"):
@@ -159,7 +166,9 @@ class Turn:
 
     def _absorb(self, name: str, args: dict[str, Any], out: dict[str, Any]) -> dict[str, Any]:
         """Keep drafts, files and sources; return what the model should see."""
-        if name == "read_doc":
+        if name == "catalog_feature":
+            self.source_refs.append(f"catalog:{out.get('slug', '')}")
+        elif name == "read_doc":
             self.source_refs.append(out.get("path", ""))
         elif name == "jira_issue":
             self.source_refs.append(out.get("key", ""))
@@ -269,7 +278,8 @@ async def run_turn(payload: dict[str, Any]) -> Any:
     name=NAME,
     description=(
         "Marketing assistant: explains in plain English what the product team has shipped or "
-        "is building (from the product docs and Jira), and writes on-brand LinkedIn/X posts, "
+        "is building (from the reviewed product catalog, the docs and Jira), and writes "
+        "on-brand LinkedIn/X posts, "
         "blogs, release notes and emails, plus Calfus-branded social images (.png/.pptx) and "
         "blog documents (.docx/.pdf). Drafts are fact-checked and need human review."
     ),

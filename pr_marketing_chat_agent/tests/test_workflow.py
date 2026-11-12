@@ -235,3 +235,24 @@ async def test_empty_message_gets_a_greeting(run):
     result = await run(ex, "   ")
     assert result.startswith("Hi!")
     assert ex.calls == []
+
+
+async def test_catalog_tools_get_the_tenant_and_record_the_feature_as_a_source(run):
+    ex = FakeExecutor(
+        [
+            [
+                _call("product_catalog", {}, "a"),
+                _call("catalog_feature", {"feature": "canvas"}, "b"),
+            ],
+            "Canvas is the visual builder.",
+        ],
+        results={
+            "catalog_overview_tool": {"features": []},
+            "catalog_feature_tool": {"slug": "canvas", "name": "Canvas"},
+        },
+    )
+    assert await run(ex) == "Canvas is the visual builder."
+    sent = dict(ex.calls)
+    assert sent["catalog_overview_tool"]["customer_id"] == "cust"
+    assert sent["catalog_feature_tool"] == {"feature": "canvas", "customer_id": "cust"}
+    assert ex.saved["turn"]["source_refs"] == ["catalog:canvas"]

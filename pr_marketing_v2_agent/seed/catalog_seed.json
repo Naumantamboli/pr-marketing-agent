@@ -1,0 +1,475 @@
+{
+  "product": "aetherion",
+  "as_of": "2026-11-12",
+  "source": "https://calfus.dev.aetherion.io/docs",
+  "overview": "Aetherion is a platform for building, running and governing production-grade AI agents that run durably and scale. Agents can be built three ways, and all three produce the same kind of agent: **Aether** (describe the agent in chat), **Canvas** (lay it out as a visual graph) or the **Python SDK** (code, version control, tests, CLI deploy). Teams often start in Aether, refine in Canvas and drop into the SDK for full control.\n\nEvery agent is an orchestrator that calls tools. It runs on a durable execution engine, so failed steps retry automatically, runs resume after a worker crash, and agents can run for hours or days. Agents can pause to ask a person a question or an approval, answered in the app or on Slack, Teams, SMS, WhatsApp or RCS.\n\nThe Aetherion web app is where people run, chat with, monitor, evaluate and share agents. It also hosts Knowledge Bases (searchable documents), Connectors to third-party apps, and Model Routing. All LLM traffic goes through a central AI Gateway that holds provider keys and applies metering, budgets, model routing and PII masking. Everything belongs to a tenant: an organization's workspace.",
+  "architecture": {
+    "summary": "Agents are built in Aether, Canvas or the SDK and published to the platform as one package (agent + tools). The platform API runs publish checks, registers the agent and its tools in the registry that Aether, Canvas and the SDK share, and the build service turns the package into a deployable agent pinned to the SDK version in its `pyproject.toml`.\n\nAt runtime an agent is a durable workflow on the workflow engine and each tool call is an activity. Workers poll task queues (`aetherion-workflows` for agents and `aetherion-activities` for tools by default) and execute the work. Deployed agents run as a fixed instance or autoscale replicas on queue backlog, down to zero. Agent code must be deterministic so the engine can replay it; all I/O happens in tools.\n\nTools use shared services: the AI Gateway for every LLM call, tenant object storage (the bucket is named after `TENANT_ID`), a Postgres database, and vector stores behind Knowledge Base search and run recall. The web app and the CLI talk to the platform API; sign-in uses SSO against an identity provider. Human-in-the-loop asks are delivered in the app and over Slack, Teams, SMS, WhatsApp and RCS. Agents can call each other as child workflows or over HTTP with the A2A protocol.",
+    "components": [
+      {
+        "slug": "web-app",
+        "name": "Aetherion app",
+        "role": "Web app for running, chatting with, monitoring, evaluating and sharing agents; hosts Aether, Canvas, Knowledge Bases, Connectors, Model Routing, Settings and the home page's Needs your input list.",
+        "depends_on": ["platform-api", "identity-provider"]
+      },
+      {
+        "slug": "platform-api",
+        "name": "Platform API and registry",
+        "role": "API behind the app and CLI (`API_BASE_URL`, `/api/v1`). Receives published packages, runs publish checks, and keeps the registry of agents and tools shared by Aether, Canvas and the SDK.",
+        "depends_on": ["identity-provider", "build-and-deploy"]
+      },
+      {
+        "slug": "build-and-deploy",
+        "name": "Build and deploy",
+        "role": "Builds each published package into an agent image with the pinned SDK version and auto-detected system dependencies, then runs it as worker replicas, optionally autoscaled on queue backlog.",
+        "depends_on": ["workers"]
+      },
+      {
+        "slug": "workflow-engine",
+        "name": "Durable workflow engine",
+        "role": "Runs agents as durable workflows: retries failed tools, resumes runs after worker crashes, carries signals and queries, and keeps runs waiting durably for human input.",
+        "depends_on": []
+      },
+      {
+        "slug": "workers",
+        "name": "Workers and task queues",
+        "role": "Processes (`aetherion run` locally, deployed replicas in the platform) that poll task queues and execute agents and tools. Default queues are `aetherion-workflows` and `aetherion-activities`; any tool or agent can be routed to its own queue.",
+        "depends_on": ["workflow-engine"]
+      },
+      {
+        "slug": "ai-gateway",
+        "name": "AI Gateway",
+        "role": "OpenAI-compatible proxy in front of every LLM provider (OpenAI, Anthropic, Gemini, Bedrock, ...). Holds provider keys and applies metering, budgets, model routing and PII masking.",
+        "depends_on": []
+      },
+      {
+        "slug": "object-storage",
+        "name": "Object storage",
+        "role": "S3-compatible object storage for uploads, generated files and agent data. Each tenant's bucket is named after its `TENANT_ID`; a local storage container is used in development.",
+        "depends_on": []
+      },
+      {
+        "slug": "relational-database",
+        "name": "Relational database (Postgres)",
+        "role": "Pooled, multi-tenant Postgres used through `common_lib`: agent run records (`agent_runs`), encrypted connector tokens, and the local vector backend.",
+        "depends_on": []
+      },
+      {
+        "slug": "vector-store",
+        "name": "Vector stores",
+        "role": "Store and search embeddings. A managed backend in production and Postgres in local development; run-recall vectors live in Milvus.",
+        "depends_on": ["relational-database"]
+      },
+      {
+        "slug": "search-index",
+        "name": "Knowledge search index",
+        "role": "Extracts, chunks and indexes documents from Knowledge Bases and document connectors (SharePoint, Google Drive) so chat and agents can search them with cited sources.",
+        "depends_on": ["object-storage", "vector-store"]
+      },
+      {
+        "slug": "identity-provider",
+        "name": "Identity provider",
+        "role": "SSO realm (`REALM_URL`) for browser sign-in and OAuth client credentials. Every account is scoped to a tenant.",
+        "depends_on": []
+      },
+      {
+        "slug": "connectors",
+        "name": "Connector service",
+        "role": "Stores each tenant's OAuth tokens for connected apps (encrypted, read with `get_oauth_credentials`) and runs document-connector syncs into the search index.",
+        "depends_on": ["relational-database", "search-index"]
+      },
+      {
+        "slug": "notification-channels",
+        "name": "Notification channels",
+        "role": "Delivers human-in-the-loop asks to Slack, Teams, SMS, WhatsApp and RCS and routes replies back to the waiting run.",
+        "depends_on": ["workflow-engine"]
+      },
+      {
+        "slug": "sdk",
+        "name": "SDK and CLI",
+        "role": "The Python packages agents are written with (`aetherion_sdk`, `common_lib`, `agent_lib`, `a2a_lib`) and the `aetherion` CLI used to run, test and publish them.",
+        "depends_on": ["platform-api", "workflow-engine"]
+      }
+    ]
+  },
+  "features": [
+    {
+      "slug": "aether",
+      "name": "Aether",
+      "summary": "Build an agent by describing it in chat; Aether plans, builds, tests and deploys it.",
+      "status": "shipped",
+      "aliases": ["conversational builder", "@Aether", "AI co-builder"],
+      "components": ["web-app", "platform-api"],
+      "overview": {
+        "what_it_is": "Aetherion's AI co-builder. In a Conversations thread you mention @Aether and describe the agent in plain English; it picks tools from the registry, drafts the workflow, runs your test inputs and deploys a real agent, with no code or diagrams.",
+        "who_its_for": "People who know the outcome they want but not the implementation, and anyone who wants a working starting point to refine later in Canvas.",
+        "how_it_works": "A build moves through six phases streamed into the chat: Intake (follow-up questions on inputs, outputs and edge cases), Planning (proposed tools, execution flow and output schema), Approval (you ask for changes in chat), Building (agent spec, schemas and metadata), Testing (runs the inputs you supply; human-in-the-loop questions appear in the chat) and Deployment. A read-only live canvas panel beside the chat shows the graph taking shape, with added / updated / removed / replacing markers. You can steer at any phase and Aether re-plans only what is affected. The result is a named, deployed agent in your Mine list, runnable from the UI, CLI or API, openable in Canvas, with its run form (metadata and triggers) and test results.",
+        "limitations": "Aether composes from the existing tool registry; a truly new integration may need an SDK-built tool first, and Aether says so. Generated agents follow the same determinism rules as SDK agents. Test rehearsals never notify the people named for human-in-the-loop asks; the question comes to the builder instead."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/aether"
+      ]
+    },
+    {
+      "slug": "canvas",
+      "name": "Canvas",
+      "summary": "Visual builder: lay an agent out as a graph of nodes, run it, inspect every step, deploy it or export it to code.",
+      "status": "shipped",
+      "aliases": ["visual builder", "drag-and-drop builder", "graph editor", "low-code"],
+      "components": ["web-app", "platform-api", "workflow-engine"],
+      "overview": {
+        "what_it_is": "A drag-and-drop editor where an agent is a graph: each step is a node and each connection passes a value. What you draw is what executes.",
+        "who_its_for": "Builders who want to see an agent's shape, watch runs step by step, add branches and loops without code, or compare one run with another.",
+        "how_it_works": "The Tools Library offers Base Nodes (Input, Output, Trigger, Condition, Loop start, Loop controller, Collect each pass, Reason & act, Ask a human, Code block), your deployed Agents, Platform Tools from the registry, and tools from connected MCP servers. Nodes are configured in place; typing @ references an upstream node's output. A quality indicator lists errors and warnings: errors block Deploy but not Run. Run saves and executes the graph, showing each step's status and its output as a preview, table or JSON. Run from here re-runs one node and everything after it. Run history can pin a past run onto the graph, replay it step by step, or compare it with another run. Deploy turns the canvas into an agent, and a Trigger node starts it from events in connected apps. Export compiles a deployed canvas into a Python SDK project (.tar.gz) for macOS arm64, Linux aarch64 or Windows x86_64.",
+        "limitations": "No autosave: Save is explicit. Nodes can't be renamed. Conditions only support all-of rules. Hand-built loops can't walk a list item by item (Aether can build one). MCP tool outputs are generic, so their fields can't be referenced, and past MCP steps may show Completed even though they failed. Export is Python-only (Java and JavaScript are listed as coming), all or nothing, limited to one loop per canvas, and refuses Reason & act nodes. Step detail in run history expires after a deployment-specific window."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/canvas"
+      ]
+    },
+    {
+      "slug": "aetherion-sdk",
+      "name": "Aetherion SDK",
+      "summary": "Python framework for building agents in code: tools, agents, executors, signals, queries and human-in-the-loop.",
+      "status": "shipped",
+      "aliases": ["Python SDK", "aetherion_sdk", "code-first agents", "tools and agents"],
+      "components": ["sdk", "workflow-engine", "workers"],
+      "overview": {
+        "what_it_is": "The code path for building agents: the `aetherion_sdk` package plus `common_lib`, `agent_lib` and `a2a_lib`, installed with one command, for version-controlled, tested, CLI-deployed agents.",
+        "who_its_for": "Engineers building production agents who want full control, code review, tests and CI.",
+        "how_it_works": "`@tool` functions do one unit of work and own all I/O (HTTP, files, database, LLM calls). `@agent` functions orchestrate tools deterministically with `toolExecutor.execute` and call child agents with `agentExecutor` (including `run_parallel` and `gather`). `@signal` and `@query` interact with a running agent; `agent_handle` gives deterministic time, sleeps and condition waits; `@register` adds schemas and flags such as `chat_enabled` and `hitl_enabled`. Each call can set timeouts, retry policy and task queue. Projects follow a fixed layout (`src/agent`, `src/tools`, `src/utils`, each package with a `metadata.json`), pin the SDK wheel by URL in `pyproject.toml`, keep secrets in `.env`, and are unit-tested with pytest by mocking `toolExecutor` and platform libraries.",
+        "limitations": "Python 3.12 only, shipped as platform-specific cp312 wheels. Agent code must be deterministic and do no I/O. Tools time out after 30 seconds per attempt unless configured. Every LLM call must go through the AI Gateway or publish is blocked."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/quickstart",
+        "https://calfus.dev.aetherion.io/docs/concepts",
+        "https://calfus.dev.aetherion.io/docs/tools-and-agents",
+        "https://calfus.dev.aetherion.io/docs/decorators",
+        "https://calfus.dev.aetherion.io/docs/sdk-utilities",
+        "https://calfus.dev.aetherion.io/docs/project-structure",
+        "https://calfus.dev.aetherion.io/docs/testing-agents",
+        "https://calfus.dev.aetherion.io/docs/task-queue-routing",
+        "https://calfus.dev.aetherion.io/docs/secrets-and-env"
+      ]
+    },
+    {
+      "slug": "aetherion-cli",
+      "name": "Aetherion CLI",
+      "summary": "Command-line tool to sign in, scaffold, run and test locally, publish, and follow logs of agents.",
+      "status": "shipped",
+      "aliases": ["aetherion command", "CLI", "local development", "aetherion login"],
+      "components": ["sdk", "platform-api", "identity-provider"],
+      "overview": {
+        "what_it_is": "The `aetherion` command that ships with the SDK installer, which also sets up `uv`, a virtualenv and local backing services.",
+        "who_its_for": "SDK developers and CI pipelines.",
+        "how_it_works": "`login` signs in with browser SSO and saves a profile named `<env>-<tenant>` (one login per terminal; `AETHERION_PROFILE` overrides it); `auth-status` and `logout` manage sessions. `init` scaffolds a project; `run` starts one worker for agents and tools; `test` opens a local browser form built from the agent's triggers; `agent` runs an agent with a JSON payload; `publish` builds and uploads; `logs` follows a published agent's output; `sync` pulls registry schemas and generates typed stubs for IDE autocomplete; `docs` searches the synced catalog offline; `config` manages `~/.config/aetherion/config.json`; `pull` fetches agent skills from a GitHub release. Settings are read from shell variables, then the terminal's login, then the project `.env`, then `config.json`, then defaults; the project `.env` never changes where you sign in or publish.",
+        "limitations": "`logs` needs manage access to the agent. `publish` asks you to confirm the target and stops in non-interactive shells unless `--yes` or `AETHERION_PUBLISH_YES=1` is set."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/cli",
+        "https://calfus.dev.aetherion.io/docs/local-setup",
+        "https://calfus.dev.aetherion.io/docs/configuration"
+      ]
+    },
+    {
+      "slug": "conversations-and-chat-agents",
+      "name": "Conversations and chat agents",
+      "summary": "Chat with agents and the knowledge base in the app; any SDK agent becomes conversational with chat_enabled.",
+      "status": "shipped",
+      "aliases": ["chat", "conversations", "floating chat", "chat agent", "chat_enabled"],
+      "components": ["web-app", "workflow-engine", "search-index"],
+      "overview": {
+        "what_it_is": "The Conversations UI, plus a floating chat, where users talk to chat-enabled agents, to Aether and to the knowledge base.",
+        "who_its_for": "End users who want answers or work done conversationally, and developers building assistants and support bots.",
+        "how_it_works": "A developer puts `@register(..., chat_enabled=True)` above `@agent`; each user message invokes the agent with that turn's input in the payload, and the platform keeps the conversation together. Users can attach files (menu, drag-and-drop or paste) under the Knowledge Base size and type limits, turn on the Knowledge Base chip for cited answers from documents, pick a model or Auto when the tenant enables it, and type @ to reference up to 10 other agents a message is about. Hovering a mention shows the agent's description, version, status, recent runs and schedule. Human-in-the-loop asks appear in the thread as question cards.",
+        "limitations": "Chat agents run through the app, not the CLI. With Auto turned off, turns use the tenant's default chat model. An @ reference identifies an agent but doesn't send the message to it."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/chat-agents",
+        "https://calfus.dev.aetherion.io/docs/platform-overview"
+      ]
+    },
+    {
+      "slug": "human-in-the-loop",
+      "name": "Human-in-the-loop",
+      "summary": "Agents pause durably to ask a person a question, a form, a file or an approval, answered in the app or on Slack, Teams, SMS, WhatsApp or RCS.",
+      "status": "shipped",
+      "aliases": ["HITL", "approvals", "ask a human", "humanInput", "needs your input"],
+      "components": ["workflow-engine", "notification-channels", "web-app"],
+      "overview": {
+        "what_it_is": "A way for any agent (SDK, Canvas or Aether) to stop mid-run, wait for a person, and continue with their checked answer.",
+        "who_its_for": "Teams that need sign-off, missing information or files from people during automated work.",
+        "how_it_works": "In code, `humanInput.request` and `humanInput.request_approval` take fields of type text, textarea, integer, number, boolean, choice, multichoice and file; options can carry descriptions and one recommended choice. In Canvas, the Ask a human node does the same, and Reason & act nodes can ask free-text questions. The ask appears on the run page, in chat (one question at a time), on the waiting canvas node and under Home > Needs your input; `notify` also sends it to named people on Slack, Teams, SMS, WhatsApp or RCS. The first answer wins and closes the ask everywhere, and answers are validated before the agent receives them. Asks expire after a day by default (up to a week on a canvas), and `on_timeout` either raises or returns nothing. Lists of items can be reviewed with a decision per item.",
+        "limitations": "Files can only be uploaded in the app. SMS, WhatsApp and RCS handle one question per ask, and an approval with fields links back to the app. Test rehearsals notify nobody. Blank optional fields come back as empty strings."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/human-in-the-loop",
+        "https://calfus.dev.aetherion.io/docs/sdk-utilities"
+      ]
+    },
+    {
+      "slug": "knowledge-bases",
+      "name": "Knowledge Bases",
+      "summary": "Upload documents that chat and agents can search, with folders, tags, sharing and expert escalation.",
+      "status": "shipped",
+      "aliases": ["KB", "documents", "document search", "RAG"],
+      "components": ["web-app", "search-index", "object-storage"],
+      "overview": {
+        "what_it_is": "Folders of documents that the platform extracts, chunks and indexes so chat and agents can find answers and cite their sources.",
+        "who_its_for": "Teams that want answers grounded in their own policies, manuals or product docs.",
+        "how_it_works": "Shared folders (Default for the whole organization, and a read-only Help folder with the platform docs) sit next to a private My Files folder. Users create folders, share them with View or Manage access, and tag documents with key:value tags. Uploads accept PDF, Word, Excel, CSV, JSON, text, Markdown and images up to 50 MB, and indexing takes seconds to about a minute. Folders can be searched by name, content and tags; in chat, the Knowledge Base chip answers from the closest chunks with citations. An escalation spreadsheet in a `sme_support` folder under Default adds a 'Who can help' contact when chat can't answer. Agents with manage access can upload documents during a run.",
+        "limitations": "50 MB per file. The Default and Help folders can't be renamed or deleted. New files aren't searchable until indexing finishes."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/knowledge-bases"
+      ]
+    },
+    {
+      "slug": "connectors",
+      "name": "Connectors",
+      "summary": "Connect third-party apps once per tenant; agents read the stored OAuth token, and document connectors sync files into search.",
+      "status": "shipped",
+      "aliases": ["apps", "integrations", "OAuth", "Jira", "Slack", "SharePoint", "Google Drive"],
+      "components": ["connectors", "search-index", "web-app"],
+      "overview": {
+        "what_it_is": "Per-tenant links to external tools, set up from the Apps (Connectors) section of the app.",
+        "who_its_for": "Admins and builders whose agents call tools such as Jira, Slack or Gmail, or who want SharePoint and Google Drive content searchable.",
+        "how_it_works": "Someone authorizes an app once for the tenant and the encrypted token is stored. Agent code fetches it with the `get_oauth_credentials` tool by provider (for example `jira` or `slack`) and gets the access token, expiry, scope and an `is_expired` flag. SharePoint is configured centrally by an admin with app-only Microsoft Graph credentials and chosen sites, and has a Sync now button. Google Drive uses per-user OAuth, with a shared-drive picker, a sync every 2 hours by default (pausable), Sync now, and an Unreadable files list with a Retry fixable action. In Canvas, a Trigger node starts a deployed agent from events in a connected app.",
+        "limitations": "`get_oauth_credentials` raises an error if the provider isn't connected. Some unreadable Drive files, such as unsupported formats or Google-native files with no export, fail on every retry. Only users who can manage apps see SharePoint's Sync now."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/connectors",
+        "https://calfus.dev.aetherion.io/docs/canvas"
+      ]
+    },
+    {
+      "slug": "model-routing",
+      "name": "Model Routing",
+      "summary": "Choose, per agent or for the whole organization, whether runs and each tool use an automatically picked, fixed or built-in model.",
+      "status": "shipped",
+      "aliases": ["auto model", "model selection", "LLM routing", "per-tool models"],
+      "components": ["ai-gateway", "web-app"],
+      "overview": {
+        "what_it_is": "Settings that decide which language model an agent's runs, and each of its tools, use.",
+        "who_its_for": "Admins and agent owners balancing cost, quality and speed across agents.",
+        "how_it_works": "Three modes: Auto, Fixed Model, or the agent's built-in model, set per agent (Settings > Model Routing) or as the organization default. Auto follows a priority (Balanced, Cost Optimized, Best Quality, Fastest Response) or custom weights for cost, quality, speed and throughput, with optional hard limits on providers, price per million tokens and minimum quality score. Under Auto each model request is routed on its own by the kind of work it asks for (classifying, extracting, drafting, reviewing, planning, code, SQL, tool loops, images) and how much thinking it needs; the decision is remembered. Owners can pin a model to a tool, developers can hint with `quality_step`, and a Preview shows what runs and tools would use. If allowed, users can pick a model in the Run dialog and save it as a preference. The run page shows each tool's model plan and flags when a tool ran on a different model.",
+        "limitations": "Only models the organization has enabled are considered. Routing steers chat models only; tools that use images, speech, video or embeddings keep their own model. It must be turned on for the organization, and changing it needs the configure permission."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/model-routing",
+        "https://calfus.dev.aetherion.io/docs/metadata-triggers"
+      ]
+    },
+    {
+      "slug": "ai-gateway-client",
+      "name": "AI Gateway client",
+      "summary": "One OpenAI-compatible client for chat, streaming, tool calls, vision, embeddings and images across every LLM provider, with no provider keys in agent code.",
+      "status": "shipped",
+      "aliases": ["AI Gateway", "AiGatewayClient", "LLM calls", "Bifrost"],
+      "components": ["ai-gateway", "sdk"],
+      "overview": {
+        "what_it_is": "The way agents call language models: `AiGatewayClient` from `agent_lib`, talking to the platform's AI Gateway.",
+        "who_its_for": "SDK developers adding LLM steps to tools.",
+        "how_it_works": "The async client reads `AI_GATEWAY_URL` and `BIFROST_VIRTUAL_KEY` from the environment and addresses models by provider and model name. It offers `chat`, `chat_with_messages`, `stream`, `chat_with_tools`, `describe_image`, `embed`, `generate_image`, `read_image_text`, `get_models` and `get_providers`. `get_llm_client()` / `LlmFactory`, or a provider SDK pointed at the gateway's base URL, are also accepted. Because every call passes through the gateway, usage is metered, budgets and model routing apply, and PII is masked.",
+        "limitations": "`aetherion run` and `publish` block code that creates a provider client outside the gateway, imports a provider SDK with `*`, or contains a provider URL or host string, even in a log message. Very large files that import a provider SDK are flagged."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/agent-lib",
+        "https://calfus.dev.aetherion.io/docs/publish",
+        "https://calfus.dev.aetherion.io/docs/secrets-and-env"
+      ]
+    },
+    {
+      "slug": "evaluations",
+      "name": "Evaluations",
+      "summary": "Run an agent against sample cases and get pass/fail scores with rationales and an overall verdict.",
+      "status": "shipped",
+      "aliases": ["evals", "agent testing in the app", "quality check"],
+      "components": ["web-app"],
+      "overview": {
+        "what_it_is": "Scored test runs of an agent from its detail page (Evals tab).",
+        "who_its_for": "Agent owners checking quality during development or before sharing, and admins reviewing share requests.",
+        "how_it_works": "The platform runs the agent on each case and scores it. Each case shows the output, pass or fail per evaluator criterion, a written rationale and latency. The run gets a verdict: Meets Expectations (100%), Partial Pass (80% or more), Needs Attention (50-79%) or Below Threshold (under 50%). Re-run repeats the same cases after changes, and admins can start an eval from a share request before deciding.",
+        "limitations": "Available for agents you own. The docs don't describe how cases or evaluator criteria are defined."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/evals"
+      ]
+    },
+    {
+      "slug": "sharing-and-promotion",
+      "name": "Sharing and promotion",
+      "summary": "Share an agent with the whole organization after admin review, or promote it to another environment.",
+      "status": "shipped",
+      "aliases": ["promotion", "share request", "shared agents", "promote to production"],
+      "components": ["web-app", "platform-api"],
+      "overview": {
+        "what_it_is": "A reviewed path from a private agent to one everyone in the organization (or another environment) can use.",
+        "who_its_for": "Agent owners and the admins who approve what goes org-wide.",
+        "how_it_works": "The owner raises a share request, which is Pending, then Approved (shown in everyone's Shared Agents tab), Rejected or later Revoked. Admins review requests in the Promotion Requests tab and can approve, reject with feedback or run an evaluation first. When cross-environment promotion is enabled, the Promote dialog sends an agent to another environment, where an admin approves it and the platform reruns the publish checks on the exact bundle: AI Gateway use, a clean `main` build outside development environments (unless the requester holds Unreviewed Publisher there), and no version already live. A failed check rejects the request with the reason.",
+        "limitations": "One active request per agent. Only admins can revoke a shared agent."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/sharing"
+      ]
+    },
+    {
+      "slug": "publishing",
+      "name": "Publishing",
+      "summary": "aetherion publish packages agent and tools into one artifact, checks it, and registers it on the platform.",
+      "status": "shipped",
+      "aliases": ["aetherion publish", "deploy", "publish checks", "Unreviewed Publisher"],
+      "components": ["sdk", "platform-api", "build-and-deploy"],
+      "overview": {
+        "what_it_is": "The step that takes an SDK project from a laptop to the platform.",
+        "who_its_for": "SDK developers and CI jobs shipping agents.",
+        "how_it_works": "From the project root, `aetherion publish` loads the project, runs publish checks locally, authenticates with the signed-in environment and tenant, shows the target and asks for confirmation, bundles agent and tools as one artifact (recording git branch, commit and remote), uploads it and the platform repeats the checks. The agent is built with the SDK version pinned in `pyproject.toml`. Checks: LLM calls must go through the AI Gateway; outside development environments the build must come from a clean `main` unless the user holds the Unreviewed Publisher role; on the platform team's own environments the git remote must be in the AetherionAgents GitHub organization; the agent name in `metadata.json` must match an `@agent`; and with `processes_uploads`, file triggers may only accept supported extensions.",
+        "limitations": "Republishing a version that is already live is rejected (except locally), so the version must be bumped. A detached HEAD is rejected. Non-interactive runs need `--yes` or `AETHERION_PUBLISH_YES=1`."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/publish",
+        "https://calfus.dev.aetherion.io/docs/troubleshooting"
+      ]
+    },
+    {
+      "slug": "structured-output",
+      "name": "Structured output",
+      "summary": "Agents return download links and external links that the app renders as buttons and links.",
+      "status": "shipped",
+      "aliases": ["download links", "s3_download_link", "agent results"],
+      "components": ["web-app", "object-storage"],
+      "overview": {
+        "what_it_is": "A result format the app recognizes and turns into interactive components instead of raw text.",
+        "who_its_for": "Developers whose agents produce files or links.",
+        "how_it_works": "An agent returns a dict of result objects keyed by name, or a `results` list next to a status and message. A download link has `type: \"s3_download_link\"`, a title, the storage `file_key`, a button label and an extension; an external link carries a markdown `[text](url)` link, a label and an extension.",
+        "limitations": "The docs describe only these two result types."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/structured-output"
+      ]
+    },
+    {
+      "slug": "metadata-and-triggers",
+      "name": "Metadata and run forms",
+      "summary": "metadata.json defines an agent's identity, the form users fill in to run it, and its tool list.",
+      "status": "shipped",
+      "aliases": ["metadata.json", "triggers", "run form", "input form"],
+      "components": ["web-app", "platform-api"],
+      "overview": {
+        "what_it_is": "The per-package config file (`src/agent/metadata.json` with `component: agent`, `src/tools/metadata.json` with `component: activity`) that the platform reads to list the agent and render its run form.",
+        "who_its_for": "SDK developers defining how users start an agent.",
+        "how_it_works": "Each trigger becomes a form field: text, dropdown, file, boolean, number, textarea or default, with a name, required flag, description, label and, for files, accepted extensions. Values arrive in the agent's payload keyed by name. `list_agent` shows the agent in the agent list. `config.activities` names the agent's tools with friendly names and categories, and gives model routing a description and optional `quality_step` per tool. Setting `processes_uploads` makes publish check that file triggers only accept the platform's supported upload extensions.",
+        "limitations": "Without `processes_uploads`, accepted extensions are not checked. Changes to the tool list take effect after the agent is republished."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/metadata-triggers"
+      ]
+    },
+    {
+      "slug": "deployment-scaling",
+      "name": "Deployment and scaling options",
+      "summary": "Tune concurrency, queue-based autoscaling (including scale to zero) and build dependencies from metadata.json.",
+      "status": "shipped",
+      "aliases": ["autoscaling", "scale to zero", "concurrency", "replicas", "task queues"],
+      "components": ["build-and-deploy", "workers"],
+      "overview": {
+        "what_it_is": "Optional settings in an agent's `metadata.json` that control how the platform builds and runs it.",
+        "who_its_for": "Developers of high-throughput or resource-heavy agents.",
+        "how_it_works": "`max_concurrent_activities` caps parallel tool executions per worker (default 100). `autoscaling_enabled` turns on queue-based replica scaling, tuned by minimum replicas (0 allows scale to zero), maximum replicas (default 3), target queue size per replica (default 1) and a cooldown before scaling down (default 7200 seconds). `additional_dependencies`, `need_oracle_client` and `need_xvfb` add system packages to the build image. Values are validated and clamped to safe ranges. Tools and agents can also be sent to dedicated workers by task queue.",
+        "limitations": "Autoscaling is off by default, so an agent runs as one fixed instance. The Oracle client is x86_64-only."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/metadata-triggers",
+        "https://calfus.dev.aetherion.io/docs/task-queue-routing"
+      ]
+    },
+    {
+      "slug": "running-agents",
+      "name": "Running and monitoring agents",
+      "summary": "Find, run, schedule and monitor agents in the app, with run history, output and logs.",
+      "status": "shipped",
+      "aliases": ["agents page", "run history", "My Agents", "Shared Agents", "scheduled runs"],
+      "components": ["web-app", "workflow-engine"],
+      "overview": {
+        "what_it_is": "The Agents section of the app, where any agent, however it was built, is run and watched.",
+        "who_its_for": "Everyone who uses agents, no code needed.",
+        "how_it_works": "My Agents and Shared Agents tabs with search. Running an agent opens its form; the run continues in the background. Run History shows status (Queued, Running, Completed, Failed, Waiting for input, Waiting for approval), start and end times, output and a step-by-step log; runs can be cancelled or run again. Agents can run on scheduled triggers. If the agent allows it, the run dialog lets a user pick a model. Status badges show Active, Inactive, Failed or Running. The owner or an org super-admin can rename an agent's display name. A help bubble on every page answers questions from the platform docs.",
+        "limitations": "Schedules are set up by an admin or the agent's builder."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/using-agents",
+        "https://calfus.dev.aetherion.io/docs/platform-overview"
+      ]
+    },
+    {
+      "slug": "few-shot-run-recall",
+      "name": "Few-shot run recall",
+      "summary": "Agents can recall similar past runs and their answers as few-shot context for the current run.",
+      "status": "shipped",
+      "aliases": ["run KB", "prepend_recall", "run memory", "enable_kb_search"],
+      "components": ["vector-store", "relational-database", "sdk"],
+      "overview": {
+        "what_it_is": "A live memory of past runs that grows with every completed, rated run, used to show the model how similar requests were answered.",
+        "who_its_for": "Developers of agents that handle recurring kinds of requests.",
+        "how_it_works": "Opt in per agent with `enable_kb_search`, then call `prepend_recall(prompt)`. Each run's request and answer are embedded (vectors in Milvus, full records in Postgres `agent_runs`). Inputs with only a document or only free text use one similarity search; inputs with both use two stages, finding runs with a similar document and then reranking by how close the stated purpose is. Thresholds and limits are set with `RUN_KB_*` variables (similarity 0.75, top 3 by default). A small seeded set bootstraps agents with no history.",
+        "limitations": "Recall is silently skipped when there is nothing to recall, recall is disabled, or anything fails. It isn't a curated dataset like Knowledge Bases or an eval set."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/agent-lib"
+      ]
+    },
+    {
+      "slug": "agent-memory",
+      "name": "Agent memory client",
+      "summary": "Persistent cross-session memory for agents, with sync and async clients over configurable vector and graph stores.",
+      "status": "shipped",
+      "aliases": ["memory", "AetherionMemory", "mem0"],
+      "components": ["sdk", "vector-store"],
+      "overview": {
+        "what_it_is": "`AetherionMemory` in `agent_lib` for storing and recalling context across sessions.",
+        "who_its_for": "Developers whose agents should remember users or past interactions.",
+        "how_it_works": "`memory.client.add(...)` stores messages for a user, agent and run; `memory.init_async_client()` gives an async client. The vector store, LLM, embedder and optional graph store are configured with environment variables.",
+        "limitations": "The docs only show adding memories and creating the async client."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/agent-lib"
+      ]
+    },
+    {
+      "slug": "agent-to-agent",
+      "name": "Agent-to-agent (A2A)",
+      "summary": "Typed models and helpers for one agent to call another over HTTP using the A2A protocol.",
+      "status": "shipped",
+      "aliases": ["A2A", "a2a_lib", "AgentCard", "agent card"],
+      "components": ["sdk"],
+      "overview": {
+        "what_it_is": "The `a2a_lib` package implementing Aetherion's agent-to-agent protocol.",
+        "who_its_for": "Developers exposing an agent as an HTTP service or calling one agent from another outside a single workflow.",
+        "how_it_works": "Pydantic models cover JWT claims (calling agent, tenant, permissions), requests (correlation id, idempotency key, target agent and skill, input, optional callback URL, TTL), responses (accepted, processing, completed or failed, with workflow id and SSE or status endpoints), errors (with a retryable flag) and base64 file uploads. An agent advertises its skills in an AgentCard at `/.well-known/agent.json`, which can be built from the platform's agent list. Helpers decode base64 uploads into FastAPI `UploadFile`s. Inside the platform, agents can also call each other as child workflows with `agentExecutor`.",
+        "limitations": ""
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/a2a-lib",
+        "https://calfus.dev.aetherion.io/docs/decorators"
+      ]
+    },
+    {
+      "slug": "data-utilities",
+      "name": "Storage, database and embeddings utilities",
+      "summary": "Shared common_lib utilities for object storage, Postgres, logging, embeddings and vector search, plus file text extraction.",
+      "status": "shipped",
+      "aliases": ["common_lib", "StorageService", "vector store", "embeddings", "file extraction"],
+      "components": ["object-storage", "relational-database", "vector-store", "sdk"],
+      "overview": {
+        "what_it_is": "The infrastructure helpers that ship with the SDK, used from tools.",
+        "who_its_for": "SDK developers whose tools read and write files, query a database or work with embeddings.",
+        "how_it_works": "`StorageService` stores and retrieves objects (whole, line by line or in chunks) in the tenant bucket. `db` gives pooled sync and async Postgres sessions configured by `POSTGRES_*` variables. `setup_logger` logs in colour or JSON. `EmbeddingsGenerator` and `EmbeddingProcessorFactory` embed PDF, text, Markdown, HTML, CSV, Word, Excel and JSON files; `VectorStoreFactory` stores, searches and deletes embeddings. `fetch_reference_data` in `agent_lib` extracts text from PDF, DOCX, CSV, Excel, HTML and Markdown.",
+        "limitations": "The storage bucket must be the tenant's `TENANT_ID`. All of this is I/O, so it belongs in tools, never in agent code."
+      },
+      "sources": [
+        "https://calfus.dev.aetherion.io/docs/common-lib",
+        "https://calfus.dev.aetherion.io/docs/agent-lib"
+      ]
+    }
+  ]
+}

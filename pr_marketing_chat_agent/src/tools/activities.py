@@ -14,7 +14,7 @@ from common_lib.utils.logger import setup_logger
 from dotenv import load_dotenv
 
 from brand import blog, social
-from utils import conversation, prompts, storage
+from utils import catalog_reader, conversation, prompts, storage
 from utils.docs_client import DocsClient
 from utils.jira_client import JiraClient
 from utils.llm import decide, structured
@@ -69,6 +69,27 @@ async def chat_decide_tool(payload: dict[str, Any]) -> dict[str, Any]:
     return await decide(system, payload["messages"], tools)
 
 
+@tool(name="catalog_overview_tool", start_to_close_timeout=timedelta(minutes=1))
+async def catalog_overview_tool(payload: dict[str, Any]) -> dict[str, Any]:
+    """The product catalog's index: overview, architecture map, every feature in one line."""
+    return catalog_reader.overview(catalog_reader.bucket(payload.get("customer_id")))
+
+
+@tool(name="catalog_feature_tool", start_to_close_timeout=timedelta(minutes=1))
+async def catalog_feature_tool(payload: dict[str, Any]) -> dict[str, Any]:
+    """One feature's full catalog record."""
+    bucket = catalog_reader.bucket(payload.get("customer_id"))
+    return catalog_reader.feature(bucket, str(payload.get("feature") or ""))
+
+
+@tool(name="catalog_changes_tool", start_to_close_timeout=timedelta(minutes=1))
+async def catalog_changes_tool(payload: dict[str, Any]) -> dict[str, Any]:
+    """Dated catalog updates across all features and the architecture, newest first."""
+    days = max(1, min(int(payload.get("days") or 30), 365))
+    bucket = catalog_reader.bucket(payload.get("customer_id"))
+    return {"days": days, **catalog_reader.recent_changes(bucket, days)}
+
+
 @tool(name="docs_index_tool", start_to_close_timeout=_FIVE_MIN)
 async def docs_index_tool(payload: dict[str, Any]) -> dict[str, Any]:
     """Every docs page in scope: path, title, description."""
@@ -107,11 +128,22 @@ async def jira_issue_tool(payload: dict[str, Any]) -> dict[str, Any]:
         return await jira.issue(str(payload.get("key") or ""))
 
 
-async def _fetch_sources(refs: list[str]) -> tuple[list[dict[str, Any]], list[str]]:
-    """Real text for each ref (docs path or Jira key); the draft is checked against this."""
-    docs_refs = [r for r in refs if not _JIRA_KEY_RE.match(r.strip().upper())]
+async def _fetch_sources(
+    refs: list[str], customer_id: str | None = None
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Real text for each ref (catalog:<slug>, docs path or Jira key); the draft is checked
+    against this."""
+    catalog_refs = [r for r in refs if r.startswith("catalog:")]
     jira_refs = [r for r in refs if _JIRA_KEY_RE.match(r.strip().upper())]
+    docs_refs = [r for r in refs if r not in catalog_refs and r not in jira_refs]
     sources, errors = [], []
+    if catalog_refs:
+        bucket = catalog_reader.bucket(customer_id)
+        for ref in catalog_refs:
+            try:
+                sources.append(catalog_reader.source_text(bucket, ref.split(":", 1)[1]))
+            except ValueError as err:
+                errors.append(f"{ref}: {err}")
     if docs_refs:
         async with DocsClient() as docs:
             for ref in docs_refs:
@@ -147,11 +179,13 @@ async def write_draft_tool(payload: dict[str, Any]) -> dict[str, Any]:
     refs = [str(r) for r in payload.get("source_refs") or []] or (base or {}).get("source_refs", [])
     refs = list(dict.fromkeys(r.strip() for r in refs if r.strip()))[:MAX_SOURCES]
     if not refs:
-        raise ValueError("write_draft needs source_refs: the docs paths or Jira keys you read.")
+        raise ValueError(
+            "write_draft needs source_refs: the catalog features, docs paths or Jira keys you read."
+        )
     fmt = payload.get("format") or (base or {}).get("format")
     template = load_template(fmt)
     theme = load_theme(payload.get("theme") or (base or {}).get("theme"))
-    sources, errors = await _fetch_sources(refs)
+    sources, errors = await _fetch_sources(refs, payload.get("customer_id"))
     if not sources:
         raise ValueError("None of the sources could be read: " + "; ".join(errors))
     step = "longform" if template["model"] == "longform" else "content"

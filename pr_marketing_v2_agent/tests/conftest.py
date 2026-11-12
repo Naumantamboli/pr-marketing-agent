@@ -23,3 +23,30 @@ if importlib.util.find_spec("common_lib") is None:
     _stub("common_lib.utils.logger", setup_logger=logging.getLogger)
 if importlib.util.find_spec("aetherion_sdk") is None:
     _stub("aetherion_sdk", tool=lambda **_: lambda fn: fn)
+
+
+# --- catalog updater fixtures ----------------------------------------------------------------
+import json  # noqa: E402
+
+import pytest  # noqa: E402
+
+SEED_PATH = Path(__file__).parent.parent / "seed" / "catalog_seed.json"
+
+
+@pytest.fixture
+def local_store(tmp_path, monkeypatch):
+    """Object storage redirected to a temp dir."""
+    from utils import storage
+
+    monkeypatch.setenv("LOCAL_OUTPUT", "true")
+    monkeypatch.setattr(storage, "_LOCAL_DIR", tmp_path)
+    return tmp_path
+
+
+@pytest.fixture
+def seeded(local_store):
+    """A temp store holding the reviewed baseline catalog."""
+    from utils import catalog
+
+    catalog.apply_seed(json.loads(SEED_PATH.read_text()))
+    return local_store
