@@ -1,6 +1,6 @@
 """Gateway LLM calls: one tool-calling chat step, and structured JSON answers.
 
-Models are "provider/model" ids from the env (bare names are treated as Anthropic).
+Models are "provider/model" ids from the env (bare names are treated as OpenAI).
 """
 
 import json
@@ -16,10 +16,12 @@ logger = setup_logger(__name__)
 
 # Step -> (env var, default model).
 _MODELS = {
-    "chat": ("CHAT_MODEL", "anthropic/claude-sonnet-5-5"),
-    "content": ("CONTENT_MODEL", "anthropic/claude-sonnet-5-5"),
-    "longform": ("LONGFORM_MODEL", "anthropic/claude-opus-5-5"),
-    "verify": ("VERIFY_MODEL", "anthropic/claude-haiku-5-5"),
+    # gpt-5.1 is the platform's proven tool-calling chat model (Aether runs on it).
+    "chat": ("CHAT_MODEL", "openai/gpt-5.1"),
+    "content": ("CONTENT_MODEL", "openai/gpt-5.1"),
+    "longform": ("LONGFORM_MODEL", "openai/gpt-5.4"),
+    # A different model from the writers, so the fact-check doesn't share their blind spots.
+    "verify": ("VERIFY_MODEL", "openai/gpt-5.4-mini"),
 }
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
@@ -29,7 +31,7 @@ def model_for(step: str) -> tuple[str, str]:
     env, default = _MODELS[step]
     model = os.getenv(env) or default
     provider, _, name = model.partition("/")
-    return (provider, name) if name else ("anthropic", provider)
+    return (provider, name) if name else ("openai", provider)
 
 
 def _text(content: Any) -> str:

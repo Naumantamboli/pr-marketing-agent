@@ -47,9 +47,13 @@ Making content
   source_refs, so read the sources first. To change an existing draft ("make it shorter"),
   call write_draft with base_draft_id and instructions instead of starting over.
 - Formats: {json.dumps(formats)}
-- make_social_visual turns a draft into a branded 1080x1350 post image (.png) plus an editable
-  PowerPoint (.pptx). Layouts: {json.dumps(layouts)}
-- make_blog_document turns a draft (usually blog_draft) into a branded Word file and PDF.
+- Files are automatic: when you write a draft, the user also gets it as a Word document and
+  a PDF, and a LinkedIn or X post also gets a Calfus-branded 1080x1350 image (.png) plus an
+  editable PowerPoint (.pptx) in the headline_light layout. Say the files are attached; never
+  offer to create them.
+- make_social_visual makes the image in another layout (or for an older draft) when asked.
+  Layouts: {json.dumps(layouts)}
+- make_blog_document remakes the branded Word file and PDF, e.g. for a draft from an earlier turn.
 - make_social_visual and make_blog_document need the draft id that write_draft returns, so
   call them in a later step, never in the same batch as the write_draft that creates the draft.
 - When you show a draft, include its id (e.g. d2) and its text, and mention any removed claims.

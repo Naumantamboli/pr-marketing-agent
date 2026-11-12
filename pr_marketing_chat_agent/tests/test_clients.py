@@ -163,7 +163,14 @@ async def test_issue_refuses_other_projects(monkeypatch):
     monkeypatch.setenv("JIRA_EMAIL", "bot@x.com")
     monkeypatch.setenv("JIRA_API_TOKEN", "t")
     monkeypatch.setenv("JIRA_PROJECTS", "AP")
-    async with JiraClient() as jira:
+    import httpx
+
+    jira = JiraClient()
+    jira._http = httpx.AsyncClient(
+        base_url="https://x.atlassian.net",
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"accountId": "1"})),
+    )
+    async with jira:
         with pytest.raises(ValueError, match="allowed projects"):
             await jira.issue("HR-1")
         with pytest.raises(ValueError, match="allowed projects"):
@@ -176,3 +183,28 @@ def test_jira_client_needs_config(monkeypatch):
     with pytest.raises(ValueError, match="Jira isn't configured"):
         JiraClient()
     assert jira_client.allowed_projects() == [] or isinstance(jira_client.allowed_projects(), list)
+
+
+async def test_rejected_credentials_fail_instead_of_searching_anonymously(monkeypatch):
+    import httpx
+
+    monkeypatch.setenv("JIRA_BASE_URL", "https://x.atlassian.net")
+    monkeypatch.setenv("JIRA_EMAIL", "bot@x.com")
+    monkeypatch.setenv("JIRA_API_TOKEN", "bad")
+    monkeypatch.setenv("JIRA_PROJECTS", "AP")
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.path)
+        if request.url.path == "/rest/api/3/myself":
+            return httpx.Response(401, json={"message": "Client must be authenticated"})
+        return httpx.Response(200, json={"issues": []})  # what anonymous search returns
+
+    client = JiraClient()
+    client._http = httpx.AsyncClient(
+        base_url="https://x.atlassian.net", transport=httpx.MockTransport(handler)
+    )
+    with pytest.raises(ValueError, match="Jira refused"):
+        async with client:
+            await client.find(status="done")
+    assert seen == ["/rest/api/3/myself"]

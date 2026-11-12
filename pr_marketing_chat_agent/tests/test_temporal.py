@@ -91,14 +91,26 @@ def fake_activities(state: dict[str, Any]) -> list:
             ]
         }
 
-    return [load, save, decide, read, write, render]
+    @activity.defn(name="render_blog_tool")
+    async def render_blog(payload: dict) -> dict:
+        key = f"{payload['key_base']}-blog.pdf"
+        return {
+            "files": [
+                {"type": "s3_download_link", "file_key": key, "title": "pdf", "extension": "pdf"}
+            ]
+        }
+
+    return [load, save, decide, read, write, render, render_blog]
 
 
-async def test_turn_runs_in_the_workflow_sandbox():
+async def test_turn_runs_in_the_workflow_sandbox(monkeypatch):
     state: dict[str, Any] = {}
     async with await WorkflowEnvironment.start_local(dev_server_existing_path=TEMPORAL) as env:
         client: Client = env.client
-        tool_queue = wf.toolExecutor._default_task_queue
+        # The sandbox re-imports the SDK and reads the queue from the env, which a loaded
+        # .env may have set; pin it so the fake activities' worker listens on the same one.
+        tool_queue = "chat-agent-test-tools"
+        monkeypatch.setenv("AETHERION_TOOL_TASK_QUEUE", tool_queue)
         async with (
             Worker(
                 client,
@@ -117,11 +129,13 @@ async def test_turn_runs_in_the_workflow_sandbox():
                 task_queue="agents",
             )
     links = [a for a in result["artifacts"] if a.get("type") == "s3_download_link"]
-    assert result["artifacts"][-1] == {"title": "Details", "text": "Here is your post and image."}
+    assert result["artifacts"][0] == {"type": "chat_reply", "text": "Here is your post and image."}
     # Step 2 rendered before d1 existed (same batch as write_draft): that call errors back to
     # the model, which retries in step 3.
     tool_results = [m for m in state["decides"][2]["messages"] if m["role"] == "tool"]
     assert "No draft 'd1'" in tool_results[-1]["content"]
     assert links[0]["file_key"].endswith("-3-d1-headline_dark.png")
+    # Word/PDF was still owed for d1, so the turn made it after the reply.
+    assert [link["file_key"].rsplit("-", 2)[-2:] for link in links[1:]] == [["d1", "blog.pdf"]]
     assert list(state["saved"]["drafts"]) == ["d1"]
     assert state["saved"]["turn"]["source_refs"] == ["content/docs/connectors.mdx"]

@@ -26,7 +26,7 @@ _LLM = {"start_to_close_timeout": timedelta(minutes=4), "retry_policy": _RETRY}
 _LONG = {"start_to_close_timeout": timedelta(minutes=10), "retry_policy": _RETRY}
 
 MAX_STEPS = 8
-# milkyway stops waiting for a chat run after 15 minutes and drops its result.
+# Keeps a turn conversational; the chat itself gives up on a run after 30 minutes.
 TURN_BUDGET = timedelta(minutes=8)
 MAX_TOOL_RESULT_CHARS = 12000
 HISTORY_REPLY_CHARS = 4000
@@ -42,6 +42,12 @@ TOOL_ACTIVITIES: dict[str, tuple[str, dict[str, Any]]] = {
     "make_social_visual": ("render_social_tool", _LLM),
     "make_blog_document": ("render_blog_tool", _FAST),
 }
+
+# Every new draft leaves the turn with its files: social posts as a branded image (+ editable
+# .pptx), and every draft as Word + PDF for review. The model only picks a different layout.
+SOCIAL_FORMATS = frozenset({"linkedin_post", "x_post"})
+DEFAULT_LAYOUT = "headline_light"
+FILE_TOOLS = ("make_social_visual", "make_blog_document")
 
 ERROR_REPLY = (
     "Sorry, something went wrong on my side and I couldn't finish that. "
@@ -103,10 +109,10 @@ def assistant_message(decision: dict[str, Any]) -> dict[str, Any]:
 
 def result_shape(reply: str, files: list[dict[str, Any]]) -> Any:
     """Chat renders a bare string as markdown; with files only `artifacts` is rendered, so the
-    reply rides in that list as a titled text item."""
+    reply rides in that list as a `chat_reply` item, shown first as plain chat text."""
     if not files:
         return reply
-    return {"artifacts": [*files, {"title": "Details", "text": reply}]}
+    return {"artifacts": [{"type": "chat_reply", "text": reply}, *files]}
 
 
 class Turn:
@@ -119,6 +125,7 @@ class Turn:
         self.new_drafts: dict[str, Any] = {}
         self.files: list[dict[str, Any]] = []
         self.source_refs: list[str] = []
+        self.rendered: set[tuple[str, str]] = set()  # (draft id, file tool) done this turn
         self.step = 0
 
     def catalog(self) -> dict[str, Any]:
@@ -147,7 +154,7 @@ class Turn:
         payload = dict(args)
         if name == "write_draft" and args.get("base_draft_id"):
             payload["base_draft"] = self._draft(args["base_draft_id"])
-        if name in ("make_social_visual", "make_blog_document"):
+        if name in FILE_TOOLS:
             payload["draft"] = self._draft(args.get("draft_id"))
             payload["customer_id"] = self.ctx["customer_id"]
             # Same key on a retry (overwrites), a new one for every other call.
@@ -170,10 +177,43 @@ class Turn:
             self.drafts[draft_id] = self.new_drafts[draft_id] = draft
             self.source_refs.extend(out.get("source_refs", []))
             return {"draft_id": draft_id, **{k: v for k, v in out.items() if k != "theme"}}
-        elif name in ("make_social_visual", "make_blog_document"):
+        elif name in FILE_TOOLS:
+            self.rendered.add((str(args.get("draft_id", "")).strip().lower(), name))
             self.files.extend(out.get("files", []))
             return {**out, "files": [f["title"] for f in out.get("files", [])]}
         return out
+
+    def missing_files(self) -> list[tuple[str, dict[str, Any]]]:
+        """File tool calls still owed for this turn's drafts."""
+        owed = []
+        for draft_id, draft in self.new_drafts.items():
+            wanted = [("make_blog_document", {"draft_id": draft_id})]
+            if draft.get("format") in SOCIAL_FORMATS:
+                wanted.insert(
+                    0, ("make_social_visual", {"draft_id": draft_id, "layout": DEFAULT_LAYOUT})
+                )
+            owed += [(name, args) for name, args in wanted if (draft_id, name) not in self.rendered]
+        return owed
+
+    async def attach_files(self) -> str:
+        """Make the owed files; returns a note for the reply when some couldn't be made."""
+        owed = self.missing_files()
+        if not owed:
+            return ""
+        self.step += 1
+        results = await asyncio.gather(
+            *(self.call(name, f"auto-{i}", args) for i, (name, args) in enumerate(owed))
+        )
+        failed = [
+            f"{args['draft_id']} ({'image' if name == 'make_social_visual' else 'Word/PDF'})"
+            for (name, args), result in zip(owed, results, strict=True)
+            if result["content"].startswith('{"error"')
+        ]
+        return (
+            f"_I couldn't create the files for {', '.join(failed)}; ask me to try again._"
+            if failed
+            else ""
+        )
 
     async def call(self, name: str, call_id: str, args: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -243,6 +283,8 @@ async def run_turn(payload: dict[str, Any]) -> Any:
     try:
         messages = history_messages(loaded.get("turns") or [], requirement, uploads)
         reply = await converse(messages, turn) or ERROR_REPLY
+        note = await turn.attach_files()
+        reply = f"{reply}\n\n{note}" if note else reply
     except Exception as exc:  # noqa: BLE001 - always answer the user
         workflow.logger.error("Turn failed in %s: %s", conversation_id, exc)
 

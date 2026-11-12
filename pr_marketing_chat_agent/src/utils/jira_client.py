@@ -135,6 +135,13 @@ class JiraClient:
         )
 
     async def __aenter__(self) -> "JiraClient":
+        # Jira serves rejected credentials as an anonymous user: searches then return 200 with
+        # no issues instead of failing. Check who we are first so a bad token is an error.
+        try:
+            self._check(await self._http.get("/rest/api/3/myself"))
+        except BaseException:
+            await self._http.aclose()
+            raise
         return self
 
     async def __aexit__(self, *exc: Any) -> None:

@@ -30,7 +30,7 @@ removed and listed. Drafts still need a human review before publishing.
   object per conversation in the tenant bucket (`pr_marketing_chat/conversations/…`), holding
   the last turns, drafts (`d1`, `d2`, …) and files.
 - Each turn is a loop: the model (`CHAT_MODEL`) replies or calls tools; tools run as Temporal
-  activities. The loop stops after 8 steps or 8 minutes (the chat stops waiting at 15).
+  activities. The loop stops after 8 steps or 8 minutes (the chat gives up after 30).
 - No HITL: `hitl_enabled` would route the next chat message into a paused run instead.
 
 | Model tool | What it does |

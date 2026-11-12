@@ -15,6 +15,8 @@ logger = setup_logger(__name__)
 
 PREFIX = "pr_marketing_chat"
 _LOCAL_DIR = Path(__file__).resolve().parents[2] / "output"
+# Without ListBucket rights a missing key reads as AccessDenied (same rule as the SDK's store).
+_MISSING_KEY_CODES = ("NoSuchKey", "404", "AccessDenied", "403")
 
 
 def _local() -> bool:
@@ -48,7 +50,7 @@ def get(bucket: str, key: str) -> bytes | None:
     try:
         return storage.retrieve(bucket, key, RetrievalMode.FULL_OBJECT)
     except ClientError as err:
-        if err.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+        if err.response.get("Error", {}).get("Code") in _MISSING_KEY_CODES:
             return None
         raise
 

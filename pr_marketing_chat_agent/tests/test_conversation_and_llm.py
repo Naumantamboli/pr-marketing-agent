@@ -60,7 +60,9 @@ def test_flatten_tool_turns_for_the_final_answer():
 
 
 def test_model_ids(monkeypatch):
-    monkeypatch.setenv("CHAT_MODEL", "openai/gpt-5.1")
+    monkeypatch.delenv("CHAT_MODEL", raising=False)
     assert model_for("chat") == ("openai", "gpt-5.1")
-    monkeypatch.setenv("CHAT_MODEL", "claude-sonnet-5-5")
+    monkeypatch.setenv("CHAT_MODEL", "gpt-5.4")
+    assert model_for("chat") == ("openai", "gpt-5.4")
+    monkeypatch.setenv("CHAT_MODEL", "anthropic/claude-sonnet-5-5")
     assert model_for("chat") == ("anthropic", "claude-sonnet-5-5")

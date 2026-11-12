@@ -175,6 +175,12 @@ async def test_drafts_files_and_artifacts_shape(run):
         "title": "d1 image",
         "extension": "png",
     }
+    doc = {
+        "type": "s3_download_link",
+        "file_key": "k.docx",
+        "title": "d1 (Word)",
+        "extension": "docx",
+    }
     ex = FakeExecutor(
         [
             [
@@ -189,16 +195,22 @@ async def test_drafts_files_and_artifacts_shape(run):
         results={
             "write_draft_tool": draft,
             "render_social_tool": lambda p: {"layout": p["layout"], "copy": {}, "files": [link]},
+            "render_blog_tool": {"files": [doc]},
         },
     )
     result = await run(ex)
-    assert result == {"artifacts": [link, {"title": "Details", "text": "Here you go."}]}
+    assert result == {"artifacts": [{"type": "chat_reply", "text": "Here you go."}, link, doc]}
+    # The model already made the image; only the Word/PDF was still owed.
+    assert [n for n, _ in ex.calls].count("render_social_tool") == 1
     render_payload = next(p for n, p in ex.calls if n == "render_social_tool")
     assert render_payload["draft"]["content"] == "Body"
     assert render_payload["customer_id"] == "cust"
     assert render_payload["key_base"] == "pr_marketing_chat/conv_1/run-1-2-d1"
     assert list(ex.saved["drafts"]) == ["d1"]
-    assert ex.saved["turn"]["files"] == [{"title": "d1 image", "file_key": "k.png"}]
+    assert ex.saved["turn"]["files"] == [
+        {"title": "d1 image", "file_key": "k.png"},
+        {"title": "d1 (Word)", "file_key": "k.docx"},
+    ]
     assert ex.saved["turn"]["source_refs"] == ["AP-1"]
 
 
@@ -235,3 +247,72 @@ async def test_empty_message_gets_a_greeting(run):
     result = await run(ex, "   ")
     assert result.startswith("Hi!")
     assert ex.calls == []
+
+
+async def test_new_drafts_always_get_their_files(run, wf):
+    post = {"format": "linkedin_post", "content": "Post", "source_refs": ["AP-1"]}
+    ex = FakeExecutor(
+        [
+            [
+                _call(
+                    "write_draft",
+                    {"format": "linkedin_post", "topic": "x", "source_refs": ["AP-1"]},
+                )
+            ],
+            "Here's your post.",
+        ],
+        results={
+            "write_draft_tool": post,
+            "render_social_tool": lambda p: {
+                "files": [
+                    {"type": "s3_download_link", "file_key": f"{p['layout']}.png", "title": "img"}
+                ]
+            },
+            "render_blog_tool": {
+                "files": [{"type": "s3_download_link", "file_key": "d.docx", "title": "doc"}]
+            },
+        },
+    )
+    result = await run(ex)
+    assert [a.get("file_key") for a in result["artifacts"]] == [
+        None,
+        f"{wf.DEFAULT_LAYOUT}.png",
+        "d.docx",
+    ]
+    assert result["artifacts"][0]["text"] == "Here's your post."
+    social = next(p for n, p in ex.calls if n == "render_social_tool")
+    assert social["layout"] == wf.DEFAULT_LAYOUT and social["draft"]["content"] == "Post"
+
+
+async def test_a_blog_gets_word_and_pdf_but_no_image(run):
+    ex = FakeExecutor(
+        [
+            [_call("write_draft", {"format": "blog_draft", "topic": "x", "source_refs": ["a"]})],
+            "Done.",
+        ],
+        results={
+            "write_draft_tool": {"format": "blog_draft", "content": "# T", "source_refs": ["a"]},
+            "render_blog_tool": {
+                "files": [{"type": "s3_download_link", "file_key": "b.pdf", "title": "pdf"}]
+            },
+        },
+    )
+    result = await run(ex)
+    assert [n for n, _ in ex.calls if n.startswith("render_")] == ["render_blog_tool"]
+    assert result["artifacts"][-1]["file_key"] == "b.pdf"
+
+
+async def test_failed_files_are_mentioned_in_the_reply(run):
+    ex = FakeExecutor(
+        [[_call("write_draft", {"format": "x_post", "topic": "x", "source_refs": ["a"]})], "Done."],
+        results={
+            "write_draft_tool": {"format": "x_post", "content": "Short", "source_refs": ["a"]},
+            "render_social_tool": RuntimeError("fonts missing"),
+            "render_blog_tool": {
+                "files": [{"type": "s3_download_link", "file_key": "x.pdf", "title": "pdf"}]
+            },
+        },
+    )
+    result = await run(ex)
+    reply = result["artifacts"][0]["text"]
+    assert reply.startswith("Done.") and "d1 (image)" in reply and "Word/PDF" not in reply
