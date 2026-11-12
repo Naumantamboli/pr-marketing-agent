@@ -1,4 +1,4 @@
-"""Activities for PrMarketingChatAgent. Each takes and returns one JSON-serialisable dict.
+"""Activities for Marcus, the marketing chat agent. Each takes and returns one JSON dict.
 
 Bad input raises ValueError (not retried); the workflow hands the message back to the model so
 it can correct itself. Keep @tool timeouts at 5 minutes or less; the workflow passes longer

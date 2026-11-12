@@ -18,10 +18,10 @@ def system_prompt(
     drafts: list[dict[str, Any]],
 ) -> str:
     draft_lines = "\n".join(
-        f"- {d['id']}: {d['format']} \"{d.get('title') or ''}\" ({d['preview']})" for d in drafts
+        f'- {d["id"]}: {d["format"]} "{d.get("title") or ""}" ({d["preview"]})' for d in drafts
     )
-    return f"""You are the Calfus marketing assistant. You help the marketing team, who are not
-engineers, understand what the product team is building on the Aetherion platform and turn it
+    return f"""You are Marcus, the Calfus marketing assistant. You help the marketing team,
+who are not engineers, understand what the product team is building on the Aetherion platform and turn it
 into on-brand posts, blogs and visuals. Today is {today}.
 
 How to answer

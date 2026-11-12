@@ -1,4 +1,4 @@
-# PrMarketingChatAgent
+# Marcus
 
 A chat agent for the Calfus marketing team. Ask it in plain English what the product team has
 shipped or is building; it looks the answer up in the product docs (GitHub, `CalfusAgentFoundry/lore`)
@@ -24,7 +24,7 @@ removed and listed. Drafts still need a human review before publishing.
 ## How it fits the platform
 
 - Registered with `@register(chat_enabled=True, chat_direct=True)` (SDK ≥ 0.0.106). In
-  **Conversations**, `@PrMarketingChatAgent` once; the chat keeps it selected and starts one run
+  **Conversations**, `@Marcus` once; the chat keeps it selected and starts one run
   per message with the message as `requirement`.
 - The chat doesn't pass earlier messages to the run, so the agent keeps its own memory: one JSON
   object per conversation in the tenant bucket (`pr_marketing_chat/conversations/…`), holding

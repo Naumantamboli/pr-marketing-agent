@@ -83,7 +83,7 @@ def test_tool_specs_match_the_allow_list(wf):
 
 
 def test_registered_as_direct_chat_agent(wf):
-    meta = wf.PrMarketingChatAgent._aetherion_register_metadata
+    meta = wf.Marcus._aetherion_register_metadata
     assert meta.name == wf.NAME
     assert meta.chat_enabled is True
     assert meta.runtime_config.get("chat_direct") is True
@@ -245,7 +245,7 @@ async def test_a_broken_turn_still_answers_and_saves(run, wf):
 async def test_empty_message_gets_a_greeting(run):
     ex = FakeExecutor([])
     result = await run(ex, "   ")
-    assert result.startswith("Hi!")
+    assert result.startswith("Hi, I'm Marcus!")
     assert ex.calls == []
 
 

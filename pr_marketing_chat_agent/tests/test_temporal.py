@@ -115,7 +115,7 @@ async def test_turn_runs_in_the_workflow_sandbox(monkeypatch):
             Worker(
                 client,
                 task_queue="agents",
-                workflows=[wf.PrMarketingChatAgent._definition.temporal_class],
+                workflows=[wf.Marcus._definition.temporal_class],
             ),
             Worker(client, task_queue=tool_queue, activities=fake_activities(state)),
         ):

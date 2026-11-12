@@ -1,5 +1,5 @@
 [project]
-name = "PrMarketingChatAgent"
+name = "Marcus"
 version = "0.1.0"
 description = "Chat assistant for marketing: explains what the product team ships (docs + Jira) and writes on-brand posts, blogs and Calfus-branded visuals."
 authors = [{ name = "Calfus Inc.", email = "cloudops@calfus.com" }]

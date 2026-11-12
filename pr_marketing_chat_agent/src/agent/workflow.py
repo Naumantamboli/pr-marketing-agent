@@ -1,4 +1,4 @@
-"""PrMarketingChatAgent: a chat agent that explains what the product team is building and turns
+"""Marcus: the Calfus marketing chat agent. It explains what the product team is building and turns
 it into on-brand posts, blogs and visuals.
 
 The chat runs one workflow per user message (chat_direct): the message arrives as
@@ -17,7 +17,7 @@ from aetherion_sdk.decorators import REGISTERED_TOOLS
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-NAME = "PrMarketingChatAgent"
+NAME = "Marcus"
 
 # Bad input won't fix itself on retry; the error goes back to the model instead.
 _RETRY = RetryPolicy(maximum_attempts=3, non_retryable_error_types=["ValueError"])
@@ -270,7 +270,10 @@ async def run_turn(payload: dict[str, Any]) -> Any:
     }
     uploads = [str(u) for u in payload.get("uploaded_files") or []]
     if not requirement:
-        return "Hi! Ask me what the product team has shipped lately, or what a feature does."
+        return (
+            "Hi, I'm Marcus! Ask me what the product team has shipped lately, "
+            "or what a feature does."
+        )
 
     store = {"conversation_id": conversation_id, "customer_id": ctx["customer_id"]}
     loaded: dict[str, Any] = {}
@@ -310,10 +313,11 @@ async def run_turn(payload: dict[str, Any]) -> Any:
 @register(
     name=NAME,
     description=(
-        "Marketing assistant: explains in plain English what the product team has shipped or "
-        "is building (from the product docs and Jira), and writes on-brand LinkedIn/X posts, "
-        "blogs, release notes and emails, plus Calfus-branded social images (.png/.pptx) and "
-        "blog documents (.docx/.pdf). Drafts are fact-checked and need human review."
+        "Marcus, the Calfus marketing assistant: explains in plain English what the product "
+        "team has shipped or is building (from the product docs and Jira), and writes on-brand "
+        "LinkedIn/X posts, blogs, release notes and emails, plus Calfus-branded social images "
+        "(.png/.pptx) and blog documents (.docx/.pdf). Drafts are fact-checked and need human "
+        "review."
     ),
     input_schema=[
         {"name": "requirement", "type": "text", "description": "The user's chat message."}
@@ -325,11 +329,11 @@ async def run_turn(payload: dict[str, Any]) -> Any:
     chat_enabled=True,
     chat_direct=True,
 )
-async def PrMarketingChatAgent(payload: dict[str, Any]) -> Any:
+async def Marcus(payload: dict[str, Any]) -> Any:
     """One chat turn: {"requirement": message, "task_metadata": {conversation_id, ...}}."""
     return await run_turn(payload)
 
 
 # @agent returns an AgentHandle without the @register metadata; the deployed worker's registry
 # scan reads `_aetherion_register_metadata` off this module attribute, so re-attach it.
-PrMarketingChatAgent._aetherion_register_metadata = REGISTERED_TOOLS[NAME]
+Marcus._aetherion_register_metadata = REGISTERED_TOOLS[NAME]
